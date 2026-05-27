@@ -1,133 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   color-scheme: dark;
-  --bg: #0b0d12;
-  --bg-elev: #11141b;
-  --fg: #e6e8ee;
-  --muted: #8b94a7;
-  --accent: #5b9cff;
-  --border: rgba(255, 255, 255, 0.08);
-  --danger: #ff5b6e;
+
+  /* RGB triplets so Tailwind's <alpha-value> opacity modifier works. */
+  --canvas: 11 13 18;         /* #0b0d12 */
+  --surface: 17 20 27;        /* #11141b */
+  --sunken: 7 9 13;           /* #07090d */
+  --ink: 230 232 238;         /* #e6e8ee */
+  --muted: 139 148 167;       /* #8b94a7 */
+  --subtle: 95 102 117;       /* #5f6675 */
+  --edge: 255 255 255;        /* alpha applied via opacity utility */
+  --accent: 91 156 255;       /* #5b9cff */
+  --success: 74 222 128;      /* #4ade80 */
+  --warning: 250 204 21;      /* #facc15 */
+  --danger: 255 91 110;       /* #ff5b6e */
 }
 
-* {
-  box-sizing: border-box;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    @apply m-0 p-0 h-screen bg-canvas text-ink font-sans text-base;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  body > div,
+  #__next {
+    height: 100%;
+  }
+
+  button {
+    @apply font-sans;
+  }
+
+  .xterm,
+  .xterm-viewport,
+  .xterm-screen {
+    height: 100%;
+  }
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100vh;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  overflow: hidden;
-}
-
-#__next,
-body > div {
-  height: 100%;
-}
-
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border);
-  -webkit-app-region: drag;
-  user-select: none;
-  padding-left: 80px; /* leave room for macOS traffic lights */
-}
-
-.brand {
-  font-weight: 600;
-}
-
-.version {
-  color: var(--muted);
-  font-weight: 400;
-  margin-left: 6px;
-  font-size: 12px;
-}
-
-.buttons {
-  display: flex;
-  gap: 8px;
-  -webkit-app-region: no-drag;
-}
-
-button {
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-button:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-button.danger {
-  border-color: rgba(255, 91, 110, 0.4);
-  color: var(--danger);
-}
-
-button.danger:hover:not(:disabled) {
-  background: rgba(255, 91, 110, 0.1);
-}
-
-.error {
-  background: rgba(255, 91, 110, 0.15);
-  color: var(--danger);
-  padding: 8px 16px;
-  font-family: 'SF Mono', Menlo, monospace;
-  font-size: 12px;
-}
-
-.terminal-area {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  background: var(--bg);
-  padding: 8px;
-}
-
-.terminal-mount {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-}
-
-.placeholder {
-  margin: auto;
-  text-align: center;
-  color: var(--muted);
-}
-
-.hint-text {
-  max-width: 480px;
-  margin: 8px auto 0;
-  font-size: 13px;
-  line-height: 1.6;
+@layer components {
+  .titlebar-drag {
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  .titlebar-no-drag {
+    -webkit-app-region: no-drag;
+  }
 }

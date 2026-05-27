@@ -27,9 +27,13 @@ const domGlobals = {
   HTMLElement: 'readonly',
   HTMLInputElement: 'readonly',
   HTMLButtonElement: 'readonly',
+  HTMLButtonAttributes: 'readonly',
+  KeyboardEvent: 'readonly',
   ResizeObserver: 'readonly',
   Notification: 'readonly',
+  React: 'readonly',
   fetch: 'readonly',
+  kbd: 'readonly',
 };
 
 export default [
@@ -48,11 +52,19 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ['**/*.{js,mjs,cjs}'],
+    files: ['**/*.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: nodeGlobals,
+    },
+  },
+  {
+    files: ['**/*.{js,cjs}'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: { ...nodeGlobals, module: 'readonly', require: 'readonly', exports: 'writable' },
     },
   },
   {
