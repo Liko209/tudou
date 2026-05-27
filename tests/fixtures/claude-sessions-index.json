@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "sessionId": "11111111-2222-3333-4444-555555555555",
+      "fullPath": "/Users/fixture/.claude/projects/-Users-fixture-workspace-demo/11111111-2222-3333-4444-555555555555.jsonl",
+      "fileMtime": 1779261604000,
+      "firstPrompt": "List the files in the current directory and then summarise them.",
+      "summary": "Directory listing & summary",
+      "messageCount": 4,
+      "created": "2026-05-20T10:00:00.000Z",
+      "modified": "2026-05-20T10:00:04.200Z",
+      "gitBranch": "main",
+      "projectPath": "/Users/fixture/workspace/demo",
+      "isSidechain": false
+    },
+    {
+      "sessionId": "22222222-3333-4444-5555-666666666666",
+      "fullPath": "/Users/fixture/.claude/projects/-Users-fixture-workspace-demo/22222222-3333-4444-5555-666666666666.jsonl",
+      "fileMtime": 1779348004000,
+      "firstPrompt": "Refactor the parser to be async.",
+      "summary": "Parser async refactor",
+      "messageCount": 16,
+      "created": "2026-05-21T10:00:00.000Z",
+      "modified": "2026-05-21T11:00:04.200Z",
+      "gitBranch": "feat/async-parser",
+      "projectPath": "/Users/fixture/workspace/demo",
+      "isSidechain": false
+    },
+    {
+      "sessionId": "33333333-4444-5555-6666-777777777777",
+      "fullPath": "/Users/fixture/.claude/projects/-Users-fixture-workspace-other/33333333-4444-5555-6666-777777777777.jsonl",
+      "fileMtime": 1779434404000,
+      "firstPrompt": "Different project, different session.",
+      "summary": "Other project work",
+      "messageCount": 3,
+      "created": "2026-05-22T10:00:00.000Z",
+      "modified": "2026-05-22T10:30:00.000Z",
+      "gitBranch": "main",
+      "projectPath": "/Users/fixture/workspace/other",
+      "isSidechain": false
+    }
+  ],
+  "originalPath": "/Users/fixture/workspace/demo"
+}

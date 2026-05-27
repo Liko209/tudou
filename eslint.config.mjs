@@ -14,6 +14,10 @@ const nodeGlobals = {
   setInterval: 'readonly',
   clearInterval: 'readonly',
   globalThis: 'readonly',
+  AbortController: 'readonly',
+  AbortSignal: 'readonly',
+  NodeJS: 'readonly',
+  ResizeObserver: 'readonly',
 };
 
 const domGlobals = {
