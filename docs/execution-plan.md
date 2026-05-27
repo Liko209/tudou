@@ -258,3 +258,17 @@ M9  Polish + E2E Smoke Test
 - Phase 0 spike 后回写 §M1 实际遇到的 xterm 兼容问题（如有）
 - M2 写完 fixture 后补真实 Codex `event_msg.payload.type` 完整枚举到 `design.md §5.2`
 - M7 完成后实测：在 `~/.claude/settings.json` 已有 hook 的几种真实场景下 merge 是否安全（用户自己有 hook 怎么办）
+
+---
+
+## M1 死亡关口验证结果（2026-05-27）
+
+✅ **通过**：electron-vite + node-pty 1.1.0 + xterm.js v6 在 Electron 33 / macOS arm64 / Node 24 上完全工作。
+
+**实测**：bash、Claude Code、Codex 三种 PTY 在 xterm 中正常 —— 输入、输出、ANSI 颜色、permission prompt（箭头键 + Enter 选择）、tool 调用动画、`/exit` 退出全部正常。
+
+**遇到的 1 个 bug**：node-pty 1.1.0 的 `prebuilds/darwin-arm64/spawn-helper` 在 npm install 后没有 execute 权限，导致 `pty.spawn` 抛 `posix_spawnp failed`。
+**Fix**：postinstall 脚本 `scripts/fix-node-pty.mjs` 自动 chmod +x。
+**Ref**：https://github.com/microsoft/node-pty/issues/669
+
+**意外好事**：electron-rebuild 没有也不需要跑 —— node-pty 的 prebuilds 用 N-API（Node-API ABI 稳定），Node 24 和 Electron 33 都能直接 load。

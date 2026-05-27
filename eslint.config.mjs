@@ -3,9 +3,44 @@ import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import react from 'eslint-plugin-react';
 
+const nodeGlobals = {
+  process: 'readonly',
+  console: 'readonly',
+  __dirname: 'readonly',
+  __filename: 'readonly',
+  Buffer: 'readonly',
+  setTimeout: 'readonly',
+  clearTimeout: 'readonly',
+  setInterval: 'readonly',
+  clearInterval: 'readonly',
+  globalThis: 'readonly',
+};
+
+const domGlobals = {
+  window: 'readonly',
+  document: 'readonly',
+  HTMLDivElement: 'readonly',
+  HTMLElement: 'readonly',
+  HTMLInputElement: 'readonly',
+  HTMLButtonElement: 'readonly',
+  ResizeObserver: 'readonly',
+  Notification: 'readonly',
+  fetch: 'readonly',
+};
+
 export default [
   {
-    ignores: ['node_modules/**', 'dist/**', 'out/**', '.next/**', 'coverage/**'],
+    ignores: [
+      'node_modules/**',
+      'dist/**',
+      'out/**',
+      '.next/**',
+      'renderer/out/**',
+      'renderer/.next/**',
+      'renderer/next-env.d.ts', // Next.js-generated, do not lint
+      'coverage/**',
+      'release/**',
+    ],
   },
   js.configs.recommended,
   {
@@ -13,16 +48,28 @@ export default [
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: {
-        process: 'readonly',
-        console: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
-      },
+      globals: nodeGlobals,
     },
   },
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    // Electron main + shared + tests (node env)
+    files: ['electron/**/*.ts', 'shared/**/*.ts', 'tests/**/*.ts'],
+    languageOptions: {
+      parser: tsparser,
+      parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
+      globals: nodeGlobals,
+    },
+    plugins: { '@typescript-eslint': tseslint },
+    rules: {
+      ...tseslint.configs.recommended.rules,
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      'no-unused-vars': 'off',
+    },
+  },
+  {
+    // Renderer (browser env)
+    files: ['renderer/**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -30,19 +77,7 @@ export default [
         sourceType: 'module',
         ecmaFeatures: { jsx: true },
       },
-      globals: {
-        process: 'readonly',
-        console: 'readonly',
-        window: 'readonly',
-        document: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
-        Buffer: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-      },
+      globals: { ...nodeGlobals, ...domGlobals },
     },
     plugins: {
       '@typescript-eslint': tseslint,
@@ -52,7 +87,7 @@ export default [
       ...tseslint.configs.recommended.rules,
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
-      'no-unused-vars': 'off', // handled by TS rule above
+      'no-unused-vars': 'off',
       'react/jsx-uses-react': 'off',
       'react/react-in-jsx-scope': 'off',
     },

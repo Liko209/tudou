@@ -1,10 +1,12 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
+import { PtyManager } from './pty-manager';
+import { registerPtyIpc } from './ipc';
 
 const isDev = process.env.NODE_ENV === 'development';
+const ptyManager = new PtyManager();
 
 function resolvePreloadPath(): string {
-  // electron/main.ts compiles to dist/electron/electron/main.js, so preload sits next to it
   return join(__dirname, 'preload.js');
 }
 
@@ -33,6 +35,8 @@ async function createMainWindow(): Promise<BrowserWindow> {
     void shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  registerPtyIpc(window, ptyManager);
 
   if (isDev) {
     await window.loadURL('http://localhost:3000');
@@ -74,5 +78,9 @@ if (!gotLock) {
     if (process.platform !== 'darwin') {
       app.quit();
     }
+  });
+
+  app.on('before-quit', () => {
+    ptyManager.disposeAll();
   });
 }
