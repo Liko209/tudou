@@ -55,3 +55,6 @@ userData/
 
 # Agent dashboard local artifacts
 instance.json
+
+# Local Claude Code settings (per-user)
+.claude/settings.local.json
