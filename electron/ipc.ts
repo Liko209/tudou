@@ -9,6 +9,9 @@ import {
 import type { PtyManager } from './pty-manager';
 import type { SessionRegistry } from './session-registry';
 import { resolveCliPath } from './cli-resolver';
+import type { HookInstaller, HookStatus } from './hook-installer';
+import { buildHookScript } from './hook-installer';
+import type { HookServer } from './hook-server';
 import type { Session } from '../shared/session-types';
 
 /**
@@ -151,4 +154,20 @@ export function registerSessionIpc(
     registry.off('remove', onRemove);
     registry.off('data', onData);
   });
+}
+
+/** Hook installer / status IPC. */
+export function registerHookIpc(installer: HookInstaller, hookServer: HookServer): void {
+  ipcMain.handle(IpcChannels.hookGetStatus, (): HookStatus => installer.getStatus());
+  ipcMain.handle(IpcChannels.hookInstall, () => {
+    installer.install(buildHookScript(hookServer.instancePath));
+    return installer.getStatus();
+  });
+  ipcMain.handle(IpcChannels.hookUninstall, () => {
+    installer.uninstall();
+    return installer.getStatus();
+  });
+  ipcMain.handle(IpcChannels.hookGetManualSnippet, () =>
+    installer.getManualSettingsSnippet(hookServer.instancePath),
+  );
 }

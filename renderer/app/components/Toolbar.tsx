@@ -22,6 +22,14 @@ export function Toolbar({ version }: ToolbarProps) {
         <span className="text-xs text-muted">{sessionCount} sessions</span>
       </div>
       <div className="titlebar-no-drag flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => useUIStore.getState().setHookModalOpen(true)}
+          title="Hook setup"
+        >
+          Hook
+        </Button>
         <Button size="sm" variant="ghost" onClick={toggleSides} title="Toggle sidebars (⌘\)">
           ⇔
         </Button>

@@ -56,6 +56,7 @@ export interface Session {
  */
 export interface SessionUpdate {
   status?: SessionStatus;
+  statusConfidence?: StatusConfidence;
   cliSessionId?: string;
   metrics?: SessionMetrics;
   latestMessage?: LatestMessage | null;

@@ -1,9 +1,11 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { PtyManager } from './pty-manager';
-import { registerPtyIpc, registerSessionIpc } from './ipc';
+import { registerPtyIpc, registerSessionIpc, registerHookIpc } from './ipc';
 import { SessionRegistry } from './session-registry';
 import { SessionPersistence } from './session-persistence';
+import { HookServer } from './hook-server';
+import { HookInstaller } from './hook-installer';
 import { LifecycleManager } from './lifecycle-manager';
 import { ClaudeAdapter } from './adapters/claude-adapter';
 import { CodexAdapter } from './adapters/codex-adapter';
@@ -13,6 +15,8 @@ const ptyManager = new PtyManager();
 const sessionPersistence = new SessionPersistence(
   join(app.getPath('userData'), 'sessions.json'),
 );
+const hookServer = new HookServer(join(app.getPath('userData'), 'instance.json'));
+const hookInstaller = new HookInstaller();
 const sessionRegistry = new SessionRegistry(
   ptyManager,
   {
@@ -21,8 +25,10 @@ const sessionRegistry = new SessionRegistry(
   },
   sessionPersistence,
 );
+hookServer.on((payload) => sessionRegistry.applyHookEvent(payload));
 let lifecycle: LifecycleManager | null = null;
 let persistenceLoaded = false;
+let hookServerStarted = false;
 
 function resolvePreloadPath(): string {
   return join(__dirname, 'preload.js');
@@ -56,6 +62,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
   registerPtyIpc(window, ptyManager);
   registerSessionIpc(window, sessionRegistry);
+  registerHookIpc(hookInstaller, hookServer);
 
   if (!lifecycle) {
     lifecycle = new LifecycleManager(window, sessionRegistry);
@@ -89,6 +96,15 @@ if (!gotLock) {
       await sessionPersistence.load();
       persistenceLoaded = true;
     }
+    if (!hookServerStarted) {
+      try {
+        await hookServer.start();
+      } catch (err) {
+         
+        console.error('[main] hook server failed to start:', err);
+      }
+      hookServerStarted = true;
+    }
     void createMainWindow();
 
     app.on('activate', () => {
@@ -112,5 +128,6 @@ if (!gotLock) {
     // there's nothing to flush here — just tear down the live state.
     lifecycle?.dispose();
     sessionRegistry.disposeAll();
+    void hookServer.stop();
   });
 }

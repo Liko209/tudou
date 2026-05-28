@@ -11,6 +11,7 @@ import { SidePanel } from './SidePanel';
 import { CenterPane } from './CenterPane';
 import { NewSessionModal } from './NewSessionModal';
 import { ResumeBanner } from './ResumeBanner';
+import { HookSetupModal } from './HookSetupModal';
 
 export function AppShell() {
   const leftCollapsed = useUIStore((s) => s.leftCollapsed);
@@ -50,6 +51,7 @@ export function AppShell() {
         </aside>
       </div>
       <NewSessionModal />
+      <HookSetupModal />
     </div>
   );
 }

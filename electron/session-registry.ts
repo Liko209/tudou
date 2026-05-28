@@ -13,6 +13,7 @@ import type {
 } from '../shared/session-types';
 import { sanitizeSpawnEnv } from './env-sanitizer';
 import type { SessionPersistence } from './session-persistence';
+import type { ClaudeHookPayload } from './hook-server';
 import type { CliAdapter, SpawnArgsInput } from './adapters/types';
 
 /** Narrow view of PtyManager used by SessionRegistry — keeps tests light. */
@@ -66,6 +67,12 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
   private readonly sessions = new Map<string, Session>();
   private readonly adapterControllers = new Map<string, AbortController>();
   private readonly ptyToSession = new Map<string, string>();
+  /**
+   * cliSessionIds we've heard from via the hook pipeline. Once a session
+   * appears here, all subsequent applyUpdates for it stay at
+   * statusConfidence='high' — we've proven the hook is wired up.
+   */
+  private readonly hookActiveCliSessionIds = new Set<string>();
   private readonly onPtyExit: (e: PtyExitEvent) => void;
   private readonly onPtyData: (e: PtyDataEvent) => void;
 
@@ -228,6 +235,38 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     }
   }
 
+  /**
+   * Apply a Claude hook event. Looks up the dashboard session by the
+   * Claude-native session_id; ignores hooks for sessions we don't own
+   * (which is correct — Claude fires the same hook for every active
+   * Claude CLI on the machine, dashboard-spawned or not).
+   */
+  applyHookEvent(payload: ClaudeHookPayload): void {
+    const cliSessionId = payload.session_id;
+    const event = payload.hook_event_name;
+    if (!cliSessionId) return;
+
+    let targetId: string | null = null;
+    for (const [id, s] of this.sessions) {
+      if (s.cli === 'claude' && s.cliSessionId === cliSessionId) {
+        targetId = id;
+        break;
+      }
+    }
+    if (!targetId) return; // not our session
+
+    // Mark hook as wired for this session — future updates stay 'high'.
+    this.hookActiveCliSessionIds.add(cliSessionId);
+
+    const update: SessionUpdate = { statusConfidence: 'high' };
+    // Stop = end of turn, Notification = mid-turn permission/decision —
+    // both mean "user needs to act". UserPromptSubmit means model is now
+    // thinking on the user's input.
+    if (event === 'Stop' || event === 'Notification') update.status = 'waiting';
+    else if (event === 'UserPromptSubmit') update.status = 'working';
+    this.applyUpdate(targetId, update);
+  }
+
   /** Forward user keystrokes (or pasted text) to the session's PTY. */
   write(sessionId: string, data: string): void {
     const ptyId = this.ptyIdFor(sessionId);
@@ -305,6 +344,15 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
   private applyUpdate(sessionId: string, update: SessionUpdate): void {
     const current = this.sessions.get(sessionId);
     if (!current) return;
+
+    // If this session's hook has ever fired, force high confidence — we
+    // know the hook is wired and adapter polling is now redundant.
+    const hookActive =
+      current.cliSessionId !== null && this.hookActiveCliSessionIds.has(current.cliSessionId);
+    const nextConfidence = hookActive
+      ? 'high'
+      : (update.statusConfidence ?? current.statusConfidence);
+
     const next: Session = {
       ...current,
       ...(update.status !== undefined ? { status: update.status } : {}),
@@ -313,6 +361,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       ...(update.metrics !== undefined ? { metrics: update.metrics } : {}),
       ...(update.latestMessage !== undefined ? { latestMessage: update.latestMessage } : {}),
       ...(update.currentTool !== undefined ? { currentTool: update.currentTool } : {}),
+      statusConfidence: nextConfidence,
       lastActivityAt: new Date().toISOString(),
     };
     this.sessions.set(sessionId, next);

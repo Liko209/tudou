@@ -8,6 +8,7 @@ import {
   type SessionDataPushPayload,
   type SessionSpawnRequest,
 } from '../shared/ipc-contracts';
+import type { HookStatus } from './hook-installer';
 import type { PreviousSession, ResumableSession, Session } from '../shared/session-types';
 
 const ptyApi = {
@@ -108,13 +109,22 @@ const envApi = {
   platform: process.platform,
 };
 
+const hooksApi = {
+  getStatus: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookGetStatus),
+  install: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookInstall),
+  uninstall: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookUninstall),
+  getManualSnippet: (): Promise<string> => ipcRenderer.invoke(IpcChannels.hookGetManualSnippet),
+};
+
 contextBridge.exposeInMainWorld('agentDashboard', {
-  version: '0.1.0-m8',
+  version: '0.1.0-m7',
   pty: ptyApi,
   sessions: sessionApi,
   env: envApi,
+  hooks: hooksApi,
 });
 
 export type PtyApi = typeof ptyApi;
 export type SessionApi = typeof sessionApi;
 export type EnvApi = typeof envApi;
+export type HooksApi = typeof hooksApi;

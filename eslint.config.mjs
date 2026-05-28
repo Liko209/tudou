@@ -19,6 +19,8 @@ const nodeGlobals = {
   NodeJS: 'readonly',
   ResizeObserver: 'readonly',
   Electron: 'readonly',
+  fetch: 'readonly',
+  localStorage: 'readonly',
 };
 
 const domGlobals = {

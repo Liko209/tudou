@@ -47,6 +47,12 @@ export const IpcChannels = {
   cliResolvePath: 'cli:resolve-path',
   dialogPickDirectory: 'dialog:pick-directory',
 
+  // Hook installer (M7)
+  hookGetStatus: 'hook:get-status',
+  hookInstall: 'hook:install',
+  hookUninstall: 'hook:uninstall',
+  hookGetManualSnippet: 'hook:get-manual-snippet',
+
   // Push channels — main → renderer.
   sessionAdd: 'session:add',
   sessionUpdate: 'session:update',
