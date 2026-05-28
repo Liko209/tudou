@@ -10,6 +10,7 @@ import {
 } from '../shared/ipc-contracts';
 import type { HookStatus } from './hook-installer';
 import type { Preferences } from './preferences';
+import type { FileEntry, FilePreview } from './files-service';
 import type { PreviousSession, ResumableSession, Session } from '../shared/session-types';
 
 const ptyApi = {
@@ -134,13 +135,20 @@ const preferencesApi = {
   clearSessions: (): Promise<void> => ipcRenderer.invoke(IpcChannels.preferencesClearSessions),
 };
 
+const filesApi = {
+  list: (dir: string): Promise<FileEntry[]> => ipcRenderer.invoke(IpcChannels.filesList, dir),
+  preview: (path: string): Promise<FilePreview> =>
+    ipcRenderer.invoke(IpcChannels.filesPreview, path),
+};
+
 contextBridge.exposeInMainWorld('agentDashboard', {
-  version: '0.1.0-m9',
+  version: '0.1.0-ui2',
   pty: ptyApi,
   sessions: sessionApi,
   env: envApi,
   hooks: hooksApi,
   preferences: preferencesApi,
+  files: filesApi,
 });
 
 export type PtyApi = typeof ptyApi;
@@ -148,3 +156,4 @@ export type SessionApi = typeof sessionApi;
 export type EnvApi = typeof envApi;
 export type HooksApi = typeof hooksApi;
 export type PreferencesApi = typeof preferencesApi;
+export type FilesApi = typeof filesApi;

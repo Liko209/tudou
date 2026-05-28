@@ -13,7 +13,12 @@ import { StatusDot } from './StatusDot';
 export function CenterPane() {
   const sessions = useSessionsStore((s) => s.sessions);
   const activeId = useSessionsStore((s) => s.activeId);
-  const ids = useMemo(() => Object.keys(sessions), [sessions]);
+  // Panel-only sessions render exclusively inside their dock panel —
+  // skip them here so we don't carry a hidden duplicate xterm in main.
+  const ids = useMemo(
+    () => Object.keys(sessions).filter((id) => !sessions[id]?.panelOnly),
+    [sessions],
+  );
   const activeSession = activeId ? sessions[activeId] : null;
 
   if (ids.length === 0) {

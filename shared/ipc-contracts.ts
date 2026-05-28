@@ -59,6 +59,10 @@ export const IpcChannels = {
   preferencesReset: 'preferences:reset',
   preferencesClearSessions: 'preferences:clear-sessions',
 
+  // Files panel (P3)
+  filesList: 'files:list',
+  filesPreview: 'files:preview',
+
   // Push channels — main → renderer.
   sessionAdd: 'session:add',
   sessionUpdate: 'session:update',
@@ -84,6 +88,10 @@ export interface SessionSpawnRequest {
    * Main allocates a unique hidden working dir for it.
    */
   chat?: boolean;
+  /**
+   * Mark as a panel-only session (Side chat). Excluded from the sidebar.
+   */
+  panelOnly?: boolean;
   cols: number;
   rows: number;
   spawnArgs?: {

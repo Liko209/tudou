@@ -118,6 +118,8 @@ export function partitionSessions(
   const projectSessions: Record<string, Session> = {};
   const chats: Session[] = [];
   for (const [id, s] of Object.entries(sessions)) {
+    // panelOnly sessions belong to a dock panel — never show in sidebar.
+    if (s.panelOnly) continue;
     if (chatsBaseDir && s.cwd.startsWith(chatsBaseDir)) {
       chats.push(s);
     } else {

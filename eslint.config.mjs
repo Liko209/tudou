@@ -21,6 +21,7 @@ const nodeGlobals = {
   Electron: 'readonly',
   fetch: 'readonly',
   localStorage: 'readonly',
+  MouseEvent: 'readonly',
 };
 
 const domGlobals = {

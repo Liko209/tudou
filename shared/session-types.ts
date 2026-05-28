@@ -47,6 +47,12 @@ export interface Session {
   latestMessage: LatestMessage | null;
   currentTool: CurrentTool | null;
   ptyExitCode: number | null;
+  /**
+   * True for sessions owned by a dock panel (Side chat). Filtered out
+   * of the main sidebar so the panel's session doesn't accumulate as
+   * a regular tab.
+   */
+  panelOnly?: boolean;
 }
 
 /**

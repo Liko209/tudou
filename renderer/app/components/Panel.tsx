@@ -8,6 +8,8 @@ import {
 import type { PanelKind } from '../../lib/stores/ui-store';
 import { PanelPicker } from './PanelPicker';
 import { ShellTerminal } from './ShellTerminal';
+import { FilesPanel } from './FilesPanel';
+import { SideChatPanel } from './SideChatPanel';
 
 interface PanelProps {
   kind: PanelKind | null;
@@ -34,12 +36,8 @@ export function Panel({ kind, onPick, onClose, position }: PanelProps) {
       <PanelHeader label={LABEL[kind]} onClose={onClose} position={position} />
       <div className="min-h-0 flex-1">
         {kind === 'terminal' && <ShellTerminal cwd={cwd} />}
-        {kind === 'files' && (
-          <PlaceholderBody name="Files" hint="File-tree browser arrives in P3." />
-        )}
-        {kind === 'sidechat' && (
-          <PlaceholderBody name="Side chat" hint="Docked AI chat arrives in P3." />
-        )}
+        {kind === 'files' && <FilesPanel />}
+        {kind === 'sidechat' && <SideChatPanel />}
       </div>
     </div>
   );
@@ -74,11 +72,3 @@ function PanelHeader({
   );
 }
 
-function PlaceholderBody({ name, hint }: { name: string; hint: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-1 text-muted">
-      <div className="text-sm">{name}</div>
-      <div className="text-xs">{hint}</div>
-    </div>
-  );
-}

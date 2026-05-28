@@ -6,6 +6,7 @@ import {
   registerSessionIpc,
   registerHookIpc,
   registerPreferencesIpc,
+  registerFilesIpc,
   chatsBaseDir,
 } from './ipc';
 import { SessionRegistry, setChatsBaseDir } from './session-registry';
@@ -86,6 +87,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   registerSessionIpc(window, sessionRegistry, preferencesStore);
   registerHookIpc(hookInstaller, hookServer);
   registerPreferencesIpc(preferencesStore, sessionPersistence);
+  registerFilesIpc();
 
   if (!lifecycle) {
     lifecycle = new LifecycleManager(window, sessionRegistry, preferencesStore);

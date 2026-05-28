@@ -17,6 +17,7 @@ import { buildHookScript } from './hook-installer';
 import type { HookServer } from './hook-server';
 import type { PreferencesStore, Preferences } from './preferences';
 import type { SessionPersistence } from './session-persistence';
+import { listDir, readPreview } from './files-service';
 import type { Session } from '../shared/session-types';
 
 /**
@@ -102,6 +103,7 @@ export function registerSessionIpc(
         rows: request.rows,
         shellPath,
         spawnArgs: request.spawnArgs,
+        panelOnly: request.panelOnly,
       });
       return session;
     },
@@ -215,4 +217,10 @@ export function registerPreferencesIpc(
       sessionPersistence.remove(rec.id);
     }
   });
+}
+
+/** Files panel — read-only fs access scoped through the main process. */
+export function registerFilesIpc(): void {
+  ipcMain.handle(IpcChannels.filesList, (_e, dir: string) => listDir(dir));
+  ipcMain.handle(IpcChannels.filesPreview, (_e, path: string) => readPreview(path));
 }

@@ -48,6 +48,8 @@ export interface SpawnSessionRequest {
   /** Absolute path to the CLI binary (resolve upstream via cli-resolver). */
   shellPath: string;
   spawnArgs?: SpawnArgsInput;
+  /** Mark as panel-only (Side chat) — filtered from main sidebar. */
+  panelOnly?: boolean;
 }
 
 /**
@@ -166,6 +168,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       latestMessage: null,
       currentTool: null,
       ptyExitCode: null,
+      ...(request.panelOnly ? { panelOnly: true } : {}),
     };
 
     this.sessions.set(sessionId, session);

@@ -34,8 +34,9 @@ export function useSessionBridge(): void {
 
     const offAdd = api.onAdd((session) => {
       upsertSession(session);
-      // Auto-focus newly spawned session.
-      setActive(session.id);
+      // Auto-focus newly spawned session — but not panel-only ones; those
+      // live inside a dock panel and would hijack the main view.
+      if (!session.panelOnly) setActive(session.id);
     });
     const offUpdate = api.onUpdate((session) => upsertSession(session));
     const offRemove = api.onRemove(({ id }) => removeSession(id));
