@@ -49,6 +49,7 @@ export const IpcChannels = {
   sessionUpdate: 'session:update',
   sessionRemove: 'session:remove',
   sessionData: 'session:data',
+  sessionFocus: 'session:focus',
 } as const;
 
 export interface SessionDataPushPayload {

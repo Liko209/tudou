@@ -88,6 +88,13 @@ const sessionApi = {
       ipcRenderer.off(IpcChannels.sessionData, h);
     };
   },
+  onFocus(callback: (payload: { id: string }) => void): () => void {
+    const h = (_e: unknown, p: { id: string }): void => callback(p);
+    ipcRenderer.on(IpcChannels.sessionFocus, h);
+    return () => {
+      ipcRenderer.off(IpcChannels.sessionFocus, h);
+    };
+  },
 };
 
 const envApi = {
@@ -96,7 +103,7 @@ const envApi = {
 };
 
 contextBridge.exposeInMainWorld('agentDashboard', {
-  version: '0.1.0-m5',
+  version: '0.1.0-m6',
   pty: ptyApi,
   sessions: sessionApi,
   env: envApi,

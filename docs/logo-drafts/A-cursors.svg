@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Plan A: rounded square + three colored cursor bars -->
+  <defs>
+    <linearGradient id="bgA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f1f27"/>
+      <stop offset="100%" stop-color="#0f0f14"/>
+    </linearGradient>
+    <filter id="glowA" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="56" ry="56" fill="url(#bgA)"/>
+  <rect x="0.5" y="0.5" width="255" height="255" rx="55.5" ry="55.5" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+
+  <!-- three cursor bars, slightly varying heights to imply active sessions -->
+  <g filter="url(#glowA)">
+    <rect x="64"  y="78"  width="20" height="110" rx="6" fill="#FF7A45"/>
+    <rect x="118" y="64"  width="20" height="128" rx="6" fill="#10B981"/>
+    <rect x="172" y="92"  width="20" height="80"  rx="6" fill="#9CA3AF"/>
+  </g>
+</svg>

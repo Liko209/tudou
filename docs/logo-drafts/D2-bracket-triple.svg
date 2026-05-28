@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- D2: [›››] — three chevrons in tri-color, multi-agent semantics -->
+  <defs>
+    <linearGradient id="bgD2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f1f27"/>
+      <stop offset="100%" stop-color="#0f0f14"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="56" ry="56" fill="url(#bgD2)"/>
+  <rect x="0.5" y="0.5" width="255" height="255" rx="55.5" ry="55.5" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+
+  <!-- left bracket -->
+  <path d="M 72 60 L 44 60 L 44 196 L 72 196"
+        stroke="#F3F4F6" stroke-width="12" fill="none"
+        stroke-linecap="square" stroke-linejoin="miter"/>
+
+  <!-- three chevrons -->
+  <g stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M  86 100 L 114 128 L  86 156" stroke="#FF7A45"/>
+    <path d="M 124 100 L 152 128 L 124 156" stroke="#10B981"/>
+    <path d="M 162 100 L 190 128 L 162 156" stroke="#9CA3AF"/>
+  </g>
+
+  <!-- right bracket -->
+  <path d="M 184 60 L 212 60 L 212 196 L 184 196"
+        stroke="#F3F4F6" stroke-width="12" fill="none"
+        stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- D4: stacked [›/›/›] — three chevrons vertically, like a session list -->
+  <defs>
+    <linearGradient id="bgD4" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f1f27"/>
+      <stop offset="100%" stop-color="#0f0f14"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="56" ry="56" fill="url(#bgD4)"/>
+  <rect x="0.5" y="0.5" width="255" height="255" rx="55.5" ry="55.5" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+
+  <!-- left bracket -->
+  <path d="M 96 56 L 60 56 L 60 200 L 96 200"
+        stroke="#F3F4F6" stroke-width="14" fill="none"
+        stroke-linecap="square" stroke-linejoin="miter"/>
+
+  <!-- three stacked chevrons (each ~28px wide, 28px tall, spaced ~46px on y) -->
+  <g stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 110 76  L 138 90  L 110 104" stroke="#FF7A45"/>
+    <path d="M 110 114 L 138 128 L 110 142" stroke="#10B981"/>
+    <path d="M 110 152 L 138 166 L 110 180" stroke="#9CA3AF"/>
+  </g>
+
+  <!-- short trailing lines, like log lines after each chevron -->
+  <g stroke="#4B5563" stroke-width="10" stroke-linecap="round">
+    <line x1="152" y1="90"  x2="188" y2="90"/>
+    <line x1="152" y1="128" x2="180" y2="128"/>
+    <line x1="152" y1="166" x2="184" y2="166"/>
+  </g>
+
+  <!-- right bracket -->
+  <path d="M 160 56 L 196 56 L 196 200 L 160 200"
+        stroke="#F3F4F6" stroke-width="14" fill="none"
+        stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

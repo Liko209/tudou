@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Plan C: orchestrator node + three agent nodes connected by lines -->
+  <defs>
+    <linearGradient id="bgC" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f1f27"/>
+      <stop offset="100%" stop-color="#0f0f14"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="56" ry="56" fill="url(#bgC)"/>
+  <rect x="0.5" y="0.5" width="255" height="255" rx="55.5" ry="55.5" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+
+  <!-- connecting lines (drawn first so nodes sit on top) -->
+  <g stroke="#4B5563" stroke-width="3" stroke-linecap="round" fill="none">
+    <line x1="128" y1="128" x2="70"  y2="78"/>
+    <line x1="128" y1="128" x2="186" y2="78"/>
+    <line x1="128" y1="128" x2="128" y2="196"/>
+  </g>
+
+  <!-- center orchestrator node -->
+  <circle cx="128" cy="128" r="22" fill="#F3F4F6"/>
+  <circle cx="128" cy="128" r="22" fill="none" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1"/>
+
+  <!-- three agent nodes -->
+  <circle cx="70"  cy="78"  r="14" fill="#FF7A45"/>
+  <circle cx="186" cy="78"  r="14" fill="#10B981"/>
+  <circle cx="128" cy="196" r="14" fill="#9CA3AF"/>
+</svg>

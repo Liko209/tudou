@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { PtyManager } from './pty-manager';
 import { registerPtyIpc, registerSessionIpc } from './ipc';
 import { SessionRegistry } from './session-registry';
+import { LifecycleManager } from './lifecycle-manager';
 import { ClaudeAdapter } from './adapters/claude-adapter';
 import { CodexAdapter } from './adapters/codex-adapter';
 
@@ -12,6 +13,7 @@ const sessionRegistry = new SessionRegistry(ptyManager, {
   claude: new ClaudeAdapter(),
   codex: new CodexAdapter(),
 });
+let lifecycle: LifecycleManager | null = null;
 
 function resolvePreloadPath(): string {
   return join(__dirname, 'preload.js');
@@ -45,6 +47,10 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
   registerPtyIpc(window, ptyManager);
   registerSessionIpc(window, sessionRegistry);
+
+  if (!lifecycle) {
+    lifecycle = new LifecycleManager(window, sessionRegistry);
+  }
 
   if (isDev) {
     await window.loadURL('http://localhost:3000');
@@ -88,7 +94,8 @@ if (!gotLock) {
     }
   });
 
-  app.on('before-quit', () => {
+  app.on('will-quit', () => {
+    lifecycle?.dispose();
     sessionRegistry.disposeAll();
   });
 }

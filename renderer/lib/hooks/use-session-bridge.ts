@@ -39,12 +39,18 @@ export function useSessionBridge(): void {
     });
     const offUpdate = api.onUpdate((session) => upsertSession(session));
     const offRemove = api.onRemove(({ id }) => removeSession(id));
+    // Main triggers this when the user clicks a notification or a tray
+    // menu item — we follow by activating the session in the UI.
+    const offFocus = api.onFocus(({ id }) => {
+      if (id) setActive(id);
+    });
 
     return () => {
       cancelled = true;
       offAdd();
       offUpdate();
       offRemove();
+      offFocus();
     };
   }, [bulkReplace, removeSession, setActive, upsertSession]);
 }

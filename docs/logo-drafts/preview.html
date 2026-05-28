@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Logo drafts — agent-dashboard</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    padding: 48px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1a1a1f; color: #f5f5f7; }
+    .card { background: #2a2a32; }
+    .small-bg { background: #f5f5f7; }
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 32px; }
+  .row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+  }
+  .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .card p  { font-size: 12px; opacity: 0.6; margin: 0 0 20px; line-height: 1.5; }
+  .big   { width: 160px; height: 160px; }
+  .sizes { display: flex; gap: 12px; align-items: flex-end; justify-content: center; margin-top: 16px; }
+  .sizes img { display: block; }
+  .small-bg { padding: 6px; border-radius: 8px; background: #1d1d1f; }
+  .label { font-size: 10px; opacity: 0.5; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <h1>Logo drafts — simplified concepts</h1>
+
+  <h2 style="font-size:14px; opacity:0.6; font-weight:500; margin:0 0 16px;">D-series · bracket + chevron variants</h2>
+  <div class="row" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="card">
+      <img class="big" src="D1-bracket-single.svg" alt="D1"/>
+      <h2>D1 — [›]</h2>
+      <p>Classic single chevron. Strongest "developer tool" read.</p>
+      <div class="sizes">
+        <div><img src="D1-bracket-single.svg" width="64" height="64"/><div class="label">64</div></div>
+        <div><img src="D1-bracket-single.svg" width="32" height="32"/><div class="label">32</div></div>
+        <div><img src="D1-bracket-single.svg" width="16" height="16"/><div class="label">16</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <img class="big" src="D2-bracket-triple.svg" alt="D2"/>
+      <h2>D2 — [›››]</h2>
+      <p>Three chevrons in brand colors = multi-agent.</p>
+      <div class="sizes">
+        <div><img src="D2-bracket-triple.svg" width="64" height="64"/><div class="label">64</div></div>
+        <div><img src="D2-bracket-triple.svg" width="32" height="32"/><div class="label">32</div></div>
+        <div><img src="D2-bracket-triple.svg" width="16" height="16"/><div class="label">16</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <img class="big" src="D3-bracket-prompt.svg" alt="D3"/>
+      <h2>D3 — [›_]</h2>
+      <p>Chevron + cursor underscore. Reads as "waiting for input".</p>
+      <div class="sizes">
+        <div><img src="D3-bracket-prompt.svg" width="64" height="64"/><div class="label">64</div></div>
+        <div><img src="D3-bracket-prompt.svg" width="32" height="32"/><div class="label">32</div></div>
+        <div><img src="D3-bracket-prompt.svg" width="16" height="16"/><div class="label">16</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <img class="big" src="D4-bracket-stacked.svg" alt="D4"/>
+      <h2>D4 — stacked</h2>
+      <p>Three rows of chevron + log-line = session list.</p>
+      <div class="sizes">
+        <div><img src="D4-bracket-stacked.svg" width="64" height="64"/><div class="label">64</div></div>
+        <div><img src="D4-bracket-stacked.svg" width="32" height="32"/><div class="label">32</div></div>
+        <div><img src="D4-bracket-stacked.svg" width="16" height="16"/><div class="label">16</div></div>
+      </div>
+    </div>
+  </div>
+
+  <h2 style="font-size:14px; opacity:0.6; font-weight:500; margin:32px 0 16px;">Original A / B / C concepts</h2>
+  <div class="row">
+    <div class="card">
+      <img class="big" src="A-cursors.svg" alt="Plan A"/>
+      <h2>A — Cursor bars</h2>
+      <p>Three blinking cursors = three live agent sessions. Closest to "developer tool" semantics.</p>
+      <div class="sizes">
+        <div><img src="A-cursors.svg" width="64" height="64"/><div class="label">64</div></div>
+        <div><img src="A-cursors.svg" width="32" height="32"/><div class="label">32</div></div>
+        <div><img src="A-cursors.svg" width="16" height="16"/><div class="label">16</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <img class="big" src="B-columns.svg" alt="Plan B"/>
+      <h2>B — Three columns</h2>
+      <p>Abstracts the actual three-pane UI. Most unique, but doesn't say "AI" on its own.</p>
+      <div class="sizes">
+        <div><img src="B-columns.svg" width="64" height="64"/><div class="label">64</div></div>
+        <div><img src="B-columns.svg" width="32" height="32"/><div class="label">32</div></div>
+        <div><img src="B-columns.svg" width="16" height="16"/><div class="label">16</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <img class="big" src="C-orchestrator.svg" alt="Plan C"/>
+      <h2>C — Orchestrator</h2>
+      <p>Hub + agent nodes. Strongest semantics, but detail gets muddy at small sizes.</p>
+      <div class="sizes">
+        <div><img src="C-orchestrator.svg" width="64" height="64"/><div class="label">64</div></div>
+        <div><img src="C-orchestrator.svg" width="32" height="32"/><div class="label">32</div></div>
+        <div><img src="C-orchestrator.svg" width="16" height="16"/><div class="label">16</div></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

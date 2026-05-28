@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- D1: classic [›] — single chevron, most minimal -->
+  <defs>
+    <linearGradient id="bgD1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f1f27"/>
+      <stop offset="100%" stop-color="#0f0f14"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="56" ry="56" fill="url(#bgD1)"/>
+  <rect x="0.5" y="0.5" width="255" height="255" rx="55.5" ry="55.5" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+
+  <!-- left bracket [ -->
+  <path d="M 92 60 L 60 60 L 60 196 L 92 196"
+        stroke="#F3F4F6" stroke-width="14" fill="none"
+        stroke-linecap="square" stroke-linejoin="miter"/>
+
+  <!-- chevron › -->
+  <path d="M 108 92 L 152 128 L 108 164"
+        stroke="#FF7A45" stroke-width="18" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- right bracket ] -->
+  <path d="M 164 60 L 196 60 L 196 196 L 164 196"
+        stroke="#F3F4F6" stroke-width="14" fill="none"
+        stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

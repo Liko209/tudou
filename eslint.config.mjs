@@ -18,6 +18,7 @@ const nodeGlobals = {
   AbortSignal: 'readonly',
   NodeJS: 'readonly',
   ResizeObserver: 'readonly',
+  Electron: 'readonly',
 };
 
 const domGlobals = {
