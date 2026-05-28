@@ -3,8 +3,7 @@
 import { useEffect, useState } from 'react';
 import { cn } from '../../lib/utils';
 import { useUIStore } from '../../lib/stores/ui-store';
-import { useSessionsStore } from '../../lib/stores/sessions-store';
-import { buildMockSessions } from '../../lib/mock-sessions';
+import { useSessionBridge } from '../../lib/hooks/use-session-bridge';
 import { Toolbar } from './Toolbar';
 import { SessionList } from './SessionList';
 import { SidePanel } from './SidePanel';
@@ -16,21 +15,13 @@ export function AppShell() {
   const toggleSides = useUIStore((s) => s.toggleSides);
   const [version, setVersion] = useState('—');
 
-  // Pick up preload version + seed mock data in dev once on mount.
+  // Live wire: keep the Zustand store in sync with SessionRegistry over IPC.
+  useSessionBridge();
+
   useEffect(() => {
     setVersion(window.agentDashboard?.version ?? '—');
-
-    if (process.env.NODE_ENV === 'development') {
-      const store = useSessionsStore.getState();
-      if (Object.keys(store.sessions).length === 0) {
-        const seed = buildMockSessions();
-        store.bulkReplace(seed);
-        store.setActive(seed[0]?.id ?? null);
-      }
-    }
   }, []);
 
-  // Keyboard: Cmd+\ toggles both sidebars.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.metaKey && e.key === '\\') {

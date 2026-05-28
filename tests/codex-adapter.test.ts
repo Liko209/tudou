@@ -175,32 +175,32 @@ describe('CodexAdapter.listResumable', () => {
 });
 
 describe('CodexAdapter.locateSessionFile', () => {
-  it('returns null when no matching rollout appears in time', async () => {
-    const adapter = new CodexAdapter({
-      codexHome: join(ROOT, 'empty-codex-2'),
-      locateTimeoutMs: 200,
-      locatePollIntervalMs: 50,
-    });
-    const result = await adapter.locateSessionFile('/Users/fixture/nothing', new Date());
+  it('returns null when the abort signal fires before any rollout appears', async () => {
+    const adapter = new CodexAdapter({ codexHome: join(ROOT, 'empty-codex-2') });
+    const ctrl = new AbortController();
+    const locator = adapter.locateSessionFile(
+      '/Users/fixture/nothing',
+      new Date(),
+      ctrl.signal,
+    );
+    setTimeout(() => ctrl.abort(), 150);
+    const result = await locator;
     expect(result).toBeNull();
   });
 
-  it('finds a freshly-created rollout file matching cwd', async () => {
+  it('finds a freshly-created rollout file matching cwd via chokidar', async () => {
     const homeForTest = join(ROOT, 'locate-codex');
-    const sessionsDir = join(homeForTest, 'sessions', '2026', '05', '28');
-    await mkdir(sessionsDir, { recursive: true });
-
-    const adapter = new CodexAdapter({
-      codexHome: homeForTest,
-      locateTimeoutMs: 2000,
-      locatePollIntervalMs: 50,
-    });
+    const adapter = new CodexAdapter({ codexHome: homeForTest });
+    const ctrl = new AbortController();
 
     const cwd = '/Users/fixture/workspace/locate-codex';
     const before = new Date();
-    const locator = adapter.locateSessionFile(cwd, before);
+    const locator = adapter.locateSessionFile(cwd, before, ctrl.signal);
 
-    await new Promise((r) => setTimeout(r, 100));
+    // chokidar attach delay
+    await new Promise((r) => setTimeout(r, 200));
+    const sessionsDir = join(homeForTest, 'sessions', '2026', '05', '28');
+    await mkdir(sessionsDir, { recursive: true });
     const id = '019eeeee-0000-7000-8000-fffffffffff0';
     const meta = {
       timestamp: '2026-05-28T00:00:00.000Z',
@@ -211,6 +211,7 @@ describe('CodexAdapter.locateSessionFile', () => {
     await writeFile(rolloutPath, JSON.stringify(meta) + '\n');
 
     const found = await locator;
+    ctrl.abort();
     expect(found).toBe(rolloutPath);
   });
 });

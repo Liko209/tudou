@@ -24,6 +24,7 @@ export interface PtyExitEvent {
 }
 
 export const IpcChannels = {
+  // Low-level PTY stream (used by xterm component for write/data/resize).
   ptySpawn: 'pty:spawn',
   ptyWrite: 'pty:write',
   ptyResize: 'pty:resize',
@@ -31,4 +32,30 @@ export const IpcChannels = {
   ptyList: 'pty:list',
   ptyData: 'pty:data',
   ptyExit: 'pty:exit',
+
+  // High-level Session orchestration (M4+).
+  sessionList: 'session:list',
+  sessionSpawn: 'session:spawn',
+  sessionKill: 'session:kill',
+  sessionForget: 'session:forget',
+  cliResolvePath: 'cli:resolve-path',
+
+  // Push channels — main → renderer.
+  sessionAdd: 'session:add',
+  sessionUpdate: 'session:update',
+  sessionRemove: 'session:remove',
 } as const;
+
+export interface SessionSpawnRequest {
+  cli: CliKind;
+  cwd: string;
+  cols: number;
+  rows: number;
+  spawnArgs?: {
+    resume?: string;
+    continueLast?: boolean;
+    name?: string;
+    model?: string;
+    effort?: string;
+  };
+}

@@ -174,37 +174,52 @@ describe('ClaudeAdapter.listResumable', () => {
 });
 
 describe('ClaudeAdapter.locateSessionFile', () => {
-  it('returns null if the project directory never appears', async () => {
-    const adapter = new ClaudeAdapter({
-      claudeHome: CLAUDE_HOME,
-      locateTimeoutMs: 200,
-      locatePollIntervalMs: 50,
-    });
-    const result = await adapter.locateSessionFile('/Users/fixture/nothing', new Date());
+  it('returns null when the abort signal fires before any file appears', async () => {
+    const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
+    const ctrl = new AbortController();
+    const locator = adapter.locateSessionFile(
+      '/Users/fixture/nothing',
+      new Date(),
+      ctrl.signal,
+    );
+    setTimeout(() => ctrl.abort(), 150);
+    const result = await locator;
     expect(result).toBeNull();
   });
 
-  it('finds a freshly created session JSONL', async () => {
+  it('finds a freshly created session JSONL via chokidar', async () => {
     const cwd = '/Users/fixture/workspace/locate';
-    const dir = join(CLAUDE_HOME, 'projects', encodeProjectPath(cwd));
-    await mkdir(dir, { recursive: true });
-
-    const adapter = new ClaudeAdapter({
-      claudeHome: CLAUDE_HOME,
-      locateTimeoutMs: 2000,
-      locatePollIntervalMs: 50,
-    });
+    const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
+    const ctrl = new AbortController();
 
     const before = new Date();
-    const locator = adapter.locateSessionFile(cwd, before);
+    const locator = adapter.locateSessionFile(cwd, before, ctrl.signal);
 
-    // Simulate claude creating its JSONL after a brief delay
-    await new Promise((r) => setTimeout(r, 100));
+    // chokidar needs a moment to attach; then write the file
+    await new Promise((r) => setTimeout(r, 200));
+    const dir = join(CLAUDE_HOME, 'projects', encodeProjectPath(cwd));
+    await mkdir(dir, { recursive: true });
     const sessionId = '12345678-1234-1234-1234-123456789012';
-    await writeFile(join(dir, `${sessionId}.jsonl`), '');
+    const fullPath = join(dir, `${sessionId}.jsonl`);
+    await writeFile(fullPath, '');
 
     const found = await locator;
-    expect(found).toBe(join(dir, `${sessionId}.jsonl`));
+    ctrl.abort();
+    expect(found).toBe(fullPath);
+  });
+
+  it('finds a pre-existing JSONL on the fast path (resume scenario)', async () => {
+    const cwd = '/Users/fixture/workspace/already-there';
+    const dir = join(CLAUDE_HOME, 'projects', encodeProjectPath(cwd));
+    await mkdir(dir, { recursive: true });
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const fullPath = join(dir, `${sessionId}.jsonl`);
+    await writeFile(fullPath, '');
+
+    const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
+    // `after` in the past so the existing file qualifies
+    const found = await adapter.locateSessionFile(cwd, new Date(Date.now() - 60_000));
+    expect(found).toBe(fullPath);
   });
 });
 

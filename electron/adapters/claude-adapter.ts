@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
+import chokidar from 'chokidar';
 import { tailJsonl } from './jsonl-tail';
 import { estimateCost } from './cost-calculator';
 import type { CliAdapter, SpawnArgsInput } from './types';
@@ -18,23 +19,15 @@ const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 export interface ClaudeAdapterOptions {
   /** Base of ~/.claude. Override for tests. */
   claudeHome?: string;
-  /** How long locateSessionFile polls before giving up. Default 5000ms. */
-  locateTimeoutMs?: number;
-  /** Poll interval inside locateSessionFile. Default 200ms. */
-  locatePollIntervalMs?: number;
 }
 
 export class ClaudeAdapter implements CliAdapter {
   readonly cli = 'claude' as const;
 
   private readonly claudeHome: string;
-  private readonly locateTimeoutMs: number;
-  private readonly locatePollIntervalMs: number;
 
   constructor(options: ClaudeAdapterOptions = {}) {
     this.claudeHome = options.claudeHome ?? join(homedir(), '.claude');
-    this.locateTimeoutMs = options.locateTimeoutMs ?? 5000;
-    this.locatePollIntervalMs = options.locatePollIntervalMs ?? 200;
   }
 
   buildSpawnArgs(input: SpawnArgsInput): string[] {
@@ -56,16 +49,23 @@ export class ClaudeAdapter implements CliAdapter {
     signal?: AbortSignal,
   ): Promise<string | null> {
     const dir = join(this.claudeHome, 'projects', encodeProjectPath(cwd));
-    const deadline = Date.now() + this.locateTimeoutMs;
-    const tolerance = 1000; // accept files mtime'd within 1s before `after` to absorb clock skew
+    const sinceMs = after.getTime() - 1000; // 1s tolerance for clock skew
 
-    while (Date.now() < deadline) {
-      if (signal?.aborted) return null;
-      const candidate = await findNewestJsonl(dir, after.getTime() - tolerance);
-      if (candidate) return candidate;
-      await sleep(this.locatePollIntervalMs);
-    }
-    return null;
+    // Fast path: file may already exist (e.g. resume scenario).
+    const existing = await findNewestJsonl(dir, sinceMs);
+    if (existing) return existing;
+    if (signal?.aborted) return null;
+
+    // Ensure the directory exists so chokidar can attach immediately —
+    // claude lazily creates the project dir on first message.
+    await mkdir(dir, { recursive: true });
+
+    return waitForNewJsonl({
+      dir,
+      sinceMs,
+      filter: (name) => SESSION_ID_RE.test(name),
+      signal,
+    });
   }
 
   async *watch(file: string, signal?: AbortSignal): AsyncIterable<SessionUpdate> {
@@ -347,6 +347,51 @@ async function findNewestJsonl(dir: string, sinceMs: number): Promise<string | n
   return best?.path ?? null;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+/**
+ * Wait for a new file matching `filter` to appear under `dir` (created
+ * after `sinceMs`). Returns the path on match, or null when the abort
+ * signal fires. Uses chokidar — no polling, near-zero idle cost.
+ */
+export interface WaitForNewJsonlOptions {
+  dir: string;
+  sinceMs: number;
+  filter: (name: string) => boolean;
+  signal?: AbortSignal;
+}
+
+export function waitForNewJsonl(options: WaitForNewJsonlOptions): Promise<string | null> {
+  const { dir, sinceMs, filter, signal } = options;
+  return new Promise<string | null>((resolve) => {
+    if (signal?.aborted) return resolve(null);
+
+    const watcher = chokidar.watch(dir, {
+      ignoreInitial: true,
+      depth: 0,
+      awaitWriteFinish: false,
+    });
+
+    let settled = false;
+    const finish = (result: string | null): void => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
+      void watcher.close();
+      resolve(result);
+    };
+    const onAbort = (): void => finish(null);
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    watcher.on('add', (path: string) => {
+      if (!filter(basename(path))) return;
+      void stat(path)
+        .then((st) => {
+          if (st.mtimeMs >= sinceMs) finish(path);
+        })
+        .catch(() => {
+          /* file vanished — ignore */
+        });
+    });
+
+    watcher.on('error', () => finish(null));
+  });
 }

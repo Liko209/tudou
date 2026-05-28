@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { open, readdir, readFile, stat } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { mkdir, open, readdir, readFile, stat } from 'node:fs/promises';
+import chokidar from 'chokidar';
 import { tailJsonl } from './jsonl-tail';
 import { estimateCost } from './cost-calculator';
 import type { CliAdapter, SpawnArgsInput } from './types';
@@ -19,21 +20,15 @@ const ROLLOUT_RE = /^rollout-[\d:T-]+-([0-9a-f-]+)\.jsonl$/i;
 export interface CodexAdapterOptions {
   /** Base of ~/.codex. Override for tests. */
   codexHome?: string;
-  locateTimeoutMs?: number;
-  locatePollIntervalMs?: number;
 }
 
 export class CodexAdapter implements CliAdapter {
   readonly cli = 'codex' as const;
 
   private readonly codexHome: string;
-  private readonly locateTimeoutMs: number;
-  private readonly locatePollIntervalMs: number;
 
   constructor(options: CodexAdapterOptions = {}) {
     this.codexHome = options.codexHome ?? join(homedir(), '.codex');
-    this.locateTimeoutMs = options.locateTimeoutMs ?? 5000;
-    this.locatePollIntervalMs = options.locatePollIntervalMs ?? 200;
   }
 
   buildSpawnArgs(input: SpawnArgsInput): string[] {
@@ -53,20 +48,66 @@ export class CodexAdapter implements CliAdapter {
     signal?: AbortSignal,
   ): Promise<string | null> {
     const sessionsDir = join(this.codexHome, 'sessions');
-    const deadline = Date.now() + this.locateTimeoutMs;
-    const sinceMs = after.getTime() - 1000; // 1s tolerance for clock skew
+    const sinceMs = after.getTime() - 1000;
 
-    while (Date.now() < deadline) {
-      if (signal?.aborted) return null;
+    // Fast path: file may already exist.
+    {
       const candidates = await collectRolloutFiles(sessionsDir, sinceMs);
       candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
       for (const { path } of candidates) {
         const meta = await readSessionMeta(path);
         if (meta && meta.cwd === cwd) return path;
       }
-      await sleep(this.locatePollIntervalMs);
     }
-    return null;
+    if (signal?.aborted) return null;
+
+    await mkdir(sessionsDir, { recursive: true });
+
+    return new Promise<string | null>((resolve) => {
+      if (signal?.aborted) return resolve(null);
+
+      const watcher = chokidar.watch(sessionsDir, {
+        ignoreInitial: true,
+        awaitWriteFinish: false,
+        // recursive — codex writes to sessions/YYYY/MM/DD/rollout-*.jsonl
+      });
+
+      let settled = false;
+      const finish = (result: string | null): void => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
+        void watcher.close();
+        resolve(result);
+      };
+      const onAbort = (): void => finish(null);
+      signal?.addEventListener('abort', onAbort, { once: true });
+
+      watcher.on('add', async (path: string) => {
+        if (!ROLLOUT_RE.test(basename(path))) return;
+        // codex writes session_meta as the first line; give the writer a few
+        // tries since 'add' can fire before the line is flushed.
+        for (let i = 0; i < 5; i++) {
+          if (settled) return;
+          try {
+            const st = await stat(path);
+            if (st.mtimeMs < sinceMs) return;
+            const meta = await readSessionMeta(path);
+            if (meta) {
+              if (meta.cwd === cwd) {
+                finish(path);
+              }
+              return; // wrong cwd — keep listening for other adds
+            }
+          } catch {
+            /* file vanished or unreadable */
+          }
+          await new Promise((r) => setTimeout(r, 80));
+        }
+      });
+
+      watcher.on('error', () => finish(null));
+    });
   }
 
   async *watch(file: string, signal?: AbortSignal): AsyncIterable<SessionUpdate> {
@@ -400,8 +441,4 @@ async function searchTreeForId(dir: string, id: string): Promise<string | null> 
     }
   }
   return null;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

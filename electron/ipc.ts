@@ -1,6 +1,13 @@
 import { ipcMain, type BrowserWindow } from 'electron';
-import { IpcChannels, type PtySpawnOptions } from '../shared/ipc-contracts';
+import {
+  IpcChannels,
+  type PtySpawnOptions,
+  type SessionSpawnRequest,
+} from '../shared/ipc-contracts';
 import type { PtyManager } from './pty-manager';
+import type { SessionRegistry } from './session-registry';
+import { resolveCliPath } from './cli-resolver';
+import type { Session } from '../shared/session-types';
 
 /**
  * Wires the PtyManager into Electron's IPC and pushes data/exit
@@ -40,5 +47,70 @@ export function registerPtyIpc(window: BrowserWindow, ptyManager: PtyManager): v
   window.on('closed', () => {
     ptyManager.off('data', onData);
     ptyManager.off('exit', onExit);
+  });
+}
+
+/**
+ * High-level Session IPC. Registers session:spawn/list/kill handlers and
+ * forwards SessionRegistry events out to the renderer.
+ */
+export function registerSessionIpc(
+  window: BrowserWindow,
+  registry: SessionRegistry,
+): void {
+  ipcMain.handle(IpcChannels.sessionList, (): Session[] => registry.list());
+
+  ipcMain.handle(
+    IpcChannels.sessionSpawn,
+    async (_e, request: SessionSpawnRequest): Promise<Session> => {
+      const shellPath = await resolveCliPath(request.cli);
+      if (!shellPath) {
+        throw new Error(
+          `Cannot launch ${request.cli}: binary not found on PATH. Run \`which ${request.cli}\` in a shell to confirm.`,
+        );
+      }
+      const { session } = registry.spawn({
+        cli: request.cli,
+        cwd: request.cwd,
+        cols: request.cols,
+        rows: request.rows,
+        shellPath,
+        spawnArgs: request.spawnArgs,
+      });
+      return session;
+    },
+  );
+
+  ipcMain.handle(IpcChannels.sessionKill, (_e, id: string, signal?: string) => {
+    registry.kill(id, signal);
+  });
+
+  ipcMain.handle(IpcChannels.sessionForget, (_e, id: string) => {
+    registry.forget(id);
+  });
+
+  ipcMain.handle(IpcChannels.cliResolvePath, (_e, name: string) => resolveCliPath(name));
+
+  const onAdd = (s: Session): void => {
+    if (window.isDestroyed()) return;
+    window.webContents.send(IpcChannels.sessionAdd, s);
+  };
+  const onUpdate = (s: Session): void => {
+    if (window.isDestroyed()) return;
+    window.webContents.send(IpcChannels.sessionUpdate, s);
+  };
+  const onRemove = (payload: { id: string }): void => {
+    if (window.isDestroyed()) return;
+    window.webContents.send(IpcChannels.sessionRemove, payload);
+  };
+
+  registry.on('add', onAdd);
+  registry.on('update', onUpdate);
+  registry.on('remove', onRemove);
+
+  window.on('closed', () => {
+    registry.off('add', onAdd);
+    registry.off('update', onUpdate);
+    registry.off('remove', onRemove);
   });
 }

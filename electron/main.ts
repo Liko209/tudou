@@ -1,10 +1,17 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { PtyManager } from './pty-manager';
-import { registerPtyIpc } from './ipc';
+import { registerPtyIpc, registerSessionIpc } from './ipc';
+import { SessionRegistry } from './session-registry';
+import { ClaudeAdapter } from './adapters/claude-adapter';
+import { CodexAdapter } from './adapters/codex-adapter';
 
 const isDev = process.env.NODE_ENV === 'development';
 const ptyManager = new PtyManager();
+const sessionRegistry = new SessionRegistry(ptyManager, {
+  claude: new ClaudeAdapter(),
+  codex: new CodexAdapter(),
+});
 
 function resolvePreloadPath(): string {
   return join(__dirname, 'preload.js');
@@ -37,6 +44,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   });
 
   registerPtyIpc(window, ptyManager);
+  registerSessionIpc(window, sessionRegistry);
 
   if (isDev) {
     await window.loadURL('http://localhost:3000');
@@ -81,6 +89,6 @@ if (!gotLock) {
   });
 
   app.on('before-quit', () => {
-    ptyManager.disposeAll();
+    sessionRegistry.disposeAll();
   });
 }
