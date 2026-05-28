@@ -53,6 +53,12 @@ export const IpcChannels = {
   hookUninstall: 'hook:uninstall',
   hookGetManualSnippet: 'hook:get-manual-snippet',
 
+  // Preferences / Settings (M9 F9.4)
+  preferencesGet: 'preferences:get',
+  preferencesSet: 'preferences:set',
+  preferencesReset: 'preferences:reset',
+  preferencesClearSessions: 'preferences:clear-sessions',
+
   // Push channels — main → renderer.
   sessionAdd: 'session:add',
   sessionUpdate: 'session:update',

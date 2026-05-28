@@ -12,6 +12,8 @@ import { CenterPane } from './CenterPane';
 import { NewSessionModal } from './NewSessionModal';
 import { ResumeBanner } from './ResumeBanner';
 import { HookSetupModal } from './HookSetupModal';
+import { SettingsModal } from './SettingsModal';
+import { ErrorBoundary } from './ErrorBoundary';
 
 export function AppShell() {
   const leftCollapsed = useUIStore((s) => s.leftCollapsed);
@@ -36,10 +38,14 @@ export function AppShell() {
             leftCollapsed ? 'w-0' : 'w-[220px]',
           )}
         >
-          <SessionList />
+          <ErrorBoundary label="Session list">
+            <SessionList />
+          </ErrorBoundary>
         </aside>
         <main className="flex-1 min-w-0 min-h-0 bg-canvas">
-          <CenterPane />
+          <ErrorBoundary label="Terminal">
+            <CenterPane />
+          </ErrorBoundary>
         </main>
         <aside
           className={cn(
@@ -47,11 +53,14 @@ export function AppShell() {
             rightCollapsed ? 'w-0' : 'w-[260px]',
           )}
         >
-          <SidePanel />
+          <ErrorBoundary label="Side panel">
+            <SidePanel />
+          </ErrorBoundary>
         </aside>
       </div>
       <NewSessionModal />
       <HookSetupModal />
+      <SettingsModal />
     </div>
   );
 }

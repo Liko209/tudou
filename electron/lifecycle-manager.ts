@@ -11,6 +11,7 @@ import {
 import type { Session, SessionStatus } from '../shared/session-types';
 import { IpcChannels } from '../shared/ipc-contracts';
 import type { SessionRegistry } from './session-registry';
+import type { PreferencesStore } from './preferences';
 
 const TRAY_LABEL_IDLE = 'AD';
 const TRAY_LABEL_LIVE = (waitingCount: number, totalCount: number): string => {
@@ -37,6 +38,7 @@ export class LifecycleManager {
   constructor(
     private readonly window: BrowserWindow,
     private readonly registry: SessionRegistry,
+    private readonly preferences: PreferencesStore,
   ) {
     registry.on('add', (s) => this.onAdd(s));
     registry.on('update', (s) => this.onUpdate(s));
@@ -88,16 +90,24 @@ export class LifecycleManager {
     const sessions = this.registry.list();
     const waiting = sessions.filter((s) => s.status === 'waiting');
     const working = sessions.filter((s) => s.status === 'working');
+    const prefs = this.preferences.get();
 
-    // Dock badge: just the waiting count (empty when 0).
+    // Dock badge: just the waiting count (empty when 0 or disabled).
     if (app.dock) {
-      app.dock.setBadge(waiting.length > 0 ? String(waiting.length) : '');
+      const show = prefs.notifications.dockBadge && waiting.length > 0;
+      app.dock.setBadge(show ? String(waiting.length) : '');
     }
 
-    // Tray title + menu reflect live state.
+    // Tray title + menu reflect live state (always shown if pref allows;
+    // disabling the tray entirely is a separate destroy/install action
+    // we don't bother with at runtime — title goes to "AD" so it's
+    // visually quiet).
     if (this.tray) {
+      const showCount = prefs.notifications.tray;
       this.tray.setTitle(
-        sessions.length === 0 ? TRAY_LABEL_IDLE : TRAY_LABEL_LIVE(waiting.length, sessions.length),
+        showCount && sessions.length > 0
+          ? TRAY_LABEL_LIVE(waiting.length, sessions.length)
+          : TRAY_LABEL_IDLE,
       );
       this.tray.setContextMenu(this.buildTrayMenu(sessions, waiting));
     }
@@ -114,14 +124,16 @@ export class LifecycleManager {
   }
 
   private notifyWaiting(session: Session): void {
-    // System notification fires every time. On macOS the notification
-    // already plays its banner sound unless silent: true; we play it
-    // only when the user isn't actively looking at our window.
+    const prefs = this.preferences.get();
+    if (!prefs.notifications.systemNotification) return;
+    if (this.preferences.isQuietHoursNow()) return;
+
     const isForeground = this.window.isFocused() && !this.window.isMinimized();
+    const wantSound = prefs.notifications.sound && !isForeground;
     const notification = new Notification({
       title: `${session.displayName} needs your input`,
       body: session.latestMessage?.preview ?? 'Waiting for input',
-      silent: isForeground,
+      silent: !wantSound,
     });
     notification.on('click', () => this.focusSession(session.id));
     notification.show();

@@ -12,9 +12,13 @@ import type {
   SessionUpdate,
 } from '../shared/session-types';
 import { sanitizeSpawnEnv } from './env-sanitizer';
+import { detectLoginPrompt } from './login-detector';
 import type { SessionPersistence } from './session-persistence';
 import type { ClaudeHookPayload } from './hook-server';
 import type { CliAdapter, SpawnArgsInput } from './adapters/types';
+
+const LOGIN_SCAN_WINDOW_MS = 5000;
+const LOGIN_SCAN_BUFFER_LIMIT = 8 * 1024;
 
 /** Narrow view of PtyManager used by SessionRegistry — keeps tests light. */
 export interface PtyHandle {
@@ -73,6 +77,14 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
    * statusConfidence='high' — we've proven the hook is wired up.
    */
   private readonly hookActiveCliSessionIds = new Set<string>();
+
+  /**
+   * Per-session running PTY-output buffer for login-prompt detection.
+   * Populated only during the first few seconds after spawn; cleared
+   * once we either flag the session or hit the time window.
+   */
+  private readonly loginScanBuffers = new Map<string, string>();
+  private readonly loginScanTimers = new Map<string, NodeJS.Timeout>();
   private readonly onPtyExit: (e: PtyExitEvent) => void;
   private readonly onPtyData: (e: PtyDataEvent) => void;
 
@@ -146,6 +158,13 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
 
     this.sessions.set(sessionId, session);
     this.ptyToSession.set(ptyId, sessionId);
+
+    // Arm login-prompt detection for the spawn window.
+    this.loginScanBuffers.set(sessionId, '');
+    this.loginScanTimers.set(
+      sessionId,
+      setTimeout(() => this.stopLoginScan(sessionId), LOGIN_SCAN_WINDOW_MS),
+    );
 
     // Persistence: drop any stale prior record for the resumed cli session
     // (so we don't accumulate duplicates over many resumes), then write a
@@ -296,6 +315,9 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
   disposeAll(): void {
     for (const ctl of this.adapterControllers.values()) ctl.abort();
     this.adapterControllers.clear();
+    for (const timer of this.loginScanTimers.values()) clearTimeout(timer);
+    this.loginScanTimers.clear();
+    this.loginScanBuffers.clear();
     this.ptyToSession.clear();
     this.sessions.clear();
     this.pty.off('exit', this.onPtyExit);
@@ -382,6 +404,41 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     const sessionId = this.ptyToSession.get(ptyId);
     if (!sessionId) return;
     this.emit('data', { sessionId, data });
+    this.scanForLoginPrompt(sessionId, data);
+  }
+
+  private scanForLoginPrompt(sessionId: string, chunk: string): void {
+    const prev = this.loginScanBuffers.get(sessionId);
+    if (prev === undefined) return; // window closed
+    const next = (prev + chunk).slice(-LOGIN_SCAN_BUFFER_LIMIT);
+    this.loginScanBuffers.set(sessionId, next);
+    if (detectLoginPrompt(next)) {
+      this.stopLoginScan(sessionId);
+      this.markLoginRequired(sessionId);
+    }
+  }
+
+  private stopLoginScan(sessionId: string): void {
+    const timer = this.loginScanTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.loginScanTimers.delete(sessionId);
+    }
+    this.loginScanBuffers.delete(sessionId);
+  }
+
+  private markLoginRequired(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const cliName = session.cli;
+    this.applyUpdate(sessionId, {
+      status: 'errored',
+      latestMessage: {
+        role: 'tool',
+        preview: `Login required — run \`${cliName}\` once outside the dashboard to sign in, then start a new session.`,
+        timestamp: new Date().toISOString(),
+      },
+    });
   }
 
   private handlePtyExit({ id: ptyId, exitCode }: PtyExitEvent): void {

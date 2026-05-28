@@ -1,5 +1,5 @@
 // Type for the API exposed by electron/preload.ts on window.agentDashboard.
-import type { PtyApi, SessionApi, EnvApi, HooksApi } from '../../electron/preload';
+import type { PtyApi, SessionApi, EnvApi, HooksApi, PreferencesApi } from '../../electron/preload';
 
 declare global {
   interface Window {
@@ -9,6 +9,7 @@ declare global {
       sessions: SessionApi;
       env: EnvApi;
       hooks: HooksApi;
+      preferences: PreferencesApi;
     };
   }
 }

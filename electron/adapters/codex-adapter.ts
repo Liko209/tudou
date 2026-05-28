@@ -5,6 +5,7 @@ import { createReadStream } from 'node:fs';
 import chokidar from 'chokidar';
 import { tailJsonl } from './jsonl-tail';
 import { estimateCost } from './cost-calculator';
+import { maskSecrets } from '../secret-masker';
 import type { CliAdapter, SpawnArgsInput } from './types';
 import type {
   CurrentTool,
@@ -341,7 +342,8 @@ function freshMetrics(): SessionMetrics {
 }
 
 function truncate(text: string, max: number): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
+  const masked = maskSecrets(text);
+  const flat = masked.replace(/\s+/g, ' ').trim();
   return flat.length <= max ? flat : flat.slice(0, max - 1) + '…';
 }
 

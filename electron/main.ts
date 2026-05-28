@@ -1,9 +1,10 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { PtyManager } from './pty-manager';
-import { registerPtyIpc, registerSessionIpc, registerHookIpc } from './ipc';
+import { registerPtyIpc, registerSessionIpc, registerHookIpc, registerPreferencesIpc } from './ipc';
 import { SessionRegistry } from './session-registry';
 import { SessionPersistence } from './session-persistence';
+import { PreferencesStore } from './preferences';
 import { HookServer } from './hook-server';
 import { HookInstaller } from './hook-installer';
 import { LifecycleManager } from './lifecycle-manager';
@@ -11,9 +12,24 @@ import { ClaudeAdapter } from './adapters/claude-adapter';
 import { CodexAdapter } from './adapters/codex-adapter';
 
 const isDev = process.env.NODE_ENV === 'development';
+
+// Last-resort crash handlers — never let an unhandled error tear down
+// Electron silently. We log loudly so the dev/log audit catches it,
+// then let the renderer keep running.
+process.on('uncaughtException', (err) => {
+   
+  console.error('[main] uncaughtException:', err);
+});
+process.on('unhandledRejection', (reason) => {
+   
+  console.error('[main] unhandledRejection:', reason);
+});
 const ptyManager = new PtyManager();
 const sessionPersistence = new SessionPersistence(
   join(app.getPath('userData'), 'sessions.json'),
+);
+const preferencesStore = new PreferencesStore(
+  join(app.getPath('userData'), 'preferences.json'),
 );
 const hookServer = new HookServer(join(app.getPath('userData'), 'instance.json'));
 const hookInstaller = new HookInstaller();
@@ -61,11 +77,12 @@ async function createMainWindow(): Promise<BrowserWindow> {
   });
 
   registerPtyIpc(window, ptyManager);
-  registerSessionIpc(window, sessionRegistry);
+  registerSessionIpc(window, sessionRegistry, preferencesStore);
   registerHookIpc(hookInstaller, hookServer);
+  registerPreferencesIpc(preferencesStore, sessionPersistence);
 
   if (!lifecycle) {
-    lifecycle = new LifecycleManager(window, sessionRegistry);
+    lifecycle = new LifecycleManager(window, sessionRegistry, preferencesStore);
   }
 
   if (isDev) {
@@ -94,6 +111,7 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     if (!persistenceLoaded) {
       await sessionPersistence.load();
+      preferencesStore.load();
       persistenceLoaded = true;
     }
     if (!hookServerStarted) {

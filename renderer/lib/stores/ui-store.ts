@@ -5,6 +5,7 @@ interface UIState {
   rightCollapsed: boolean;
   newSessionOpen: boolean;
   hookModalOpen: boolean;
+  settingsOpen: boolean;
 
   toggleLeft: () => void;
   toggleRight: () => void;
@@ -12,6 +13,7 @@ interface UIState {
   toggleSides: () => void;
   setNewSessionOpen: (open: boolean) => void;
   setHookModalOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -19,6 +21,7 @@ export const useUIStore = create<UIState>((set) => ({
   rightCollapsed: false,
   newSessionOpen: false,
   hookModalOpen: false,
+  settingsOpen: false,
 
   toggleLeft: () => set((s) => ({ leftCollapsed: !s.leftCollapsed })),
   toggleRight: () => set((s) => ({ rightCollapsed: !s.rightCollapsed })),
@@ -30,4 +33,5 @@ export const useUIStore = create<UIState>((set) => ({
 
   setNewSessionOpen: (open) => set({ newSessionOpen: open }),
   setHookModalOpen: (open) => set({ hookModalOpen: open }),
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
 }));

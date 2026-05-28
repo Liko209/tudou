@@ -12,6 +12,8 @@ import { resolveCliPath } from './cli-resolver';
 import type { HookInstaller, HookStatus } from './hook-installer';
 import { buildHookScript } from './hook-installer';
 import type { HookServer } from './hook-server';
+import type { PreferencesStore, Preferences } from './preferences';
+import type { SessionPersistence } from './session-persistence';
 import type { Session } from '../shared/session-types';
 
 /**
@@ -62,16 +64,19 @@ export function registerPtyIpc(window: BrowserWindow, ptyManager: PtyManager): v
 export function registerSessionIpc(
   window: BrowserWindow,
   registry: SessionRegistry,
+  preferences: PreferencesStore,
 ): void {
   ipcMain.handle(IpcChannels.sessionList, (): Session[] => registry.list());
 
   ipcMain.handle(
     IpcChannels.sessionSpawn,
     async (_e, request: SessionSpawnRequest): Promise<Session> => {
-      const shellPath = await resolveCliPath(request.cli);
+      // User-configured override wins; otherwise probe the shell.
+      const override = preferences.cliPathOverride(request.cli);
+      const shellPath = override ?? (await resolveCliPath(request.cli));
       if (!shellPath) {
         throw new Error(
-          `Cannot launch ${request.cli}: binary not found on PATH. Run \`which ${request.cli}\` in a shell to confirm.`,
+          `Cannot launch ${request.cli}: binary not found on PATH. Run \`which ${request.cli}\` in a shell to confirm, or set a custom path in Settings.`,
         );
       }
       const { session } = registry.spawn({
@@ -170,4 +175,23 @@ export function registerHookIpc(installer: HookInstaller, hookServer: HookServer
   ipcMain.handle(IpcChannels.hookGetManualSnippet, () =>
     installer.getManualSettingsSnippet(hookServer.instancePath),
   );
+}
+
+/** Preferences + dashboard data management IPC. */
+export function registerPreferencesIpc(
+  preferences: PreferencesStore,
+  sessionPersistence: SessionPersistence,
+): void {
+  ipcMain.handle(IpcChannels.preferencesGet, (): Preferences => preferences.get());
+  ipcMain.handle(IpcChannels.preferencesSet, (_e, next: Preferences): Preferences =>
+    preferences.setAll(next),
+  );
+  ipcMain.handle(IpcChannels.preferencesReset, (): Preferences => preferences.reset());
+  ipcMain.handle(IpcChannels.preferencesClearSessions, () => {
+    // Drop every persisted session record (the user is asking for a
+    // clean slate; live sessions in memory are untouched).
+    for (const rec of sessionPersistence.list()) {
+      sessionPersistence.remove(rec.id);
+    }
+  });
 }

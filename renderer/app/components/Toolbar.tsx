@@ -25,6 +25,14 @@ export function Toolbar({ version }: ToolbarProps) {
         <Button
           size="sm"
           variant="ghost"
+          onClick={() => useUIStore.getState().setSettingsOpen(true)}
+          title="Settings"
+        >
+          ⚙
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
           onClick={() => useUIStore.getState().setHookModalOpen(true)}
           title="Hook setup"
         >

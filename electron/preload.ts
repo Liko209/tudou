@@ -9,6 +9,7 @@ import {
   type SessionSpawnRequest,
 } from '../shared/ipc-contracts';
 import type { HookStatus } from './hook-installer';
+import type { Preferences } from './preferences';
 import type { PreviousSession, ResumableSession, Session } from '../shared/session-types';
 
 const ptyApi = {
@@ -116,15 +117,25 @@ const hooksApi = {
   getManualSnippet: (): Promise<string> => ipcRenderer.invoke(IpcChannels.hookGetManualSnippet),
 };
 
+const preferencesApi = {
+  get: (): Promise<Preferences> => ipcRenderer.invoke(IpcChannels.preferencesGet),
+  set: (next: Preferences): Promise<Preferences> =>
+    ipcRenderer.invoke(IpcChannels.preferencesSet, next),
+  reset: (): Promise<Preferences> => ipcRenderer.invoke(IpcChannels.preferencesReset),
+  clearSessions: (): Promise<void> => ipcRenderer.invoke(IpcChannels.preferencesClearSessions),
+};
+
 contextBridge.exposeInMainWorld('agentDashboard', {
-  version: '0.1.0-m7',
+  version: '0.1.0-m9',
   pty: ptyApi,
   sessions: sessionApi,
   env: envApi,
   hooks: hooksApi,
+  preferences: preferencesApi,
 });
 
 export type PtyApi = typeof ptyApi;
 export type SessionApi = typeof sessionApi;
 export type EnvApi = typeof envApi;
 export type HooksApi = typeof hooksApi;
+export type PreferencesApi = typeof preferencesApi;
