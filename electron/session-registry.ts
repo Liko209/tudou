@@ -50,6 +50,18 @@ export interface SpawnSessionRequest {
   spawnArgs?: SpawnArgsInput;
 }
 
+/**
+ * Root under which ad-hoc Chat working dirs live. If a session's cwd starts
+ * with this path it's classified as a Chat (no project basename in its
+ * displayName); otherwise it's a Project session.
+ *
+ * Inject from main via setChatsBaseDir() once at startup.
+ */
+let chatsRoot = '';
+export function setChatsBaseDir(dir: string): void {
+  chatsRoot = dir;
+}
+
 export interface SpawnSessionResult {
   session: Session;
   ptyId: string;
@@ -145,7 +157,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       cliSessionId: null,
       cwd: request.cwd,
       gitBranch: null,
-      displayName: autoName(request.cwd, startedAt),
+      displayName: autoName(request.cwd, startedAt, request.cli),
       status: 'starting',
       statusConfidence: 'low',
       startedAt: startedAt.toISOString(),
@@ -492,11 +504,17 @@ function freshMetrics(): SessionMetrics {
   };
 }
 
-function autoName(cwd: string, at: Date): string {
-  const base = basename(cwd) || cwd;
+function autoName(cwd: string, at: Date, cli: CliKind): string {
   const hh = String(at.getHours()).padStart(2, '0');
   const mm = String(at.getMinutes()).padStart(2, '0');
-  return `${base} · ${hh}:${mm}`;
+  const time = `${hh}:${mm}`;
+  if (chatsRoot && cwd.startsWith(chatsRoot)) {
+    // Chat: don't surface the uuid working dir; lead with the CLI name.
+    const label = cli === 'claude' ? 'Claude' : cli === 'codex' ? 'Codex' : cli;
+    return `${label} · ${time}`;
+  }
+  const base = basename(cwd) || cwd;
+  return `${base} · ${time}`;
 }
 
 // Silence unused-type warnings if these are imported solely for narrowing

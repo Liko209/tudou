@@ -8,9 +8,9 @@ import { useUIStore } from '../../lib/stores/ui-store';
 import type { CliKind } from '../../../shared/ipc-contracts';
 import type { ResumableSession } from '../../../shared/session-types';
 
-const CLI_OPTIONS: { kind: CliKind; label: string }[] = [
-  { kind: 'claude', label: 'Claude Code' },
-  { kind: 'codex', label: 'Codex' },
+const CLI_OPTIONS: { kind: CliKind; label: string; description: string }[] = [
+  { kind: 'claude', label: 'Claude Code', description: 'Anthropic, file-aware' },
+  { kind: 'codex', label: 'Codex', description: 'OpenAI, GPT-5' },
 ];
 
 export function NewSessionModal() {
@@ -18,22 +18,24 @@ export function NewSessionModal() {
   const setOpen = useUIStore((s) => s.setNewSessionOpen);
 
   const [cli, setCli] = useState<CliKind>('claude');
+  const [tieToProject, setTieToProject] = useState(false);
   const [cwd, setCwd] = useState<string>('');
   const [resumable, setResumable] = useState<ResumableSession[] | null>(null);
   const [resumeId, setResumeId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Seed cwd to home on first open.
+  // Reset on open
   useEffect(() => {
     if (!open) return;
-    setCwd((prev) => prev || (window.agentDashboard?.env.homedir() ?? ''));
     setError(null);
+    setResumeId(null);
+    setCwd((prev) => prev || (window.agentDashboard?.env.homedir() ?? ''));
   }, [open]);
 
-  // Refresh resumable list whenever cli or cwd changes.
+  // Resumable list only meaningful for project mode (chats use ad-hoc dirs)
   useEffect(() => {
-    if (!open || !cwd) {
+    if (!open || !tieToProject || !cwd) {
       setResumable(null);
       return;
     }
@@ -53,25 +55,27 @@ export function NewSessionModal() {
     return () => {
       cancelled = true;
     };
-  }, [open, cli, cwd]);
+  }, [open, tieToProject, cli, cwd]);
 
   const browse = useCallback(async () => {
     const picked = await window.agentDashboard?.sessions.pickDirectory({
       defaultPath: cwd || undefined,
     });
-    if (picked) setCwd(picked);
+    if (picked) {
+      setCwd(picked);
+      setTieToProject(true);
+    }
   }, [cwd]);
 
   const submit = useCallback(async () => {
-    if (!cwd) return;
     setPending(true);
     setError(null);
     try {
       await window.agentDashboard?.sessions.spawn({
         cli,
-        cwd,
         cols: 120,
         rows: 32,
+        ...(tieToProject ? { cwd } : { chat: true }),
         spawnArgs: resumeId ? { resume: resumeId } : undefined,
       });
       setOpen(false);
@@ -81,52 +85,59 @@ export function NewSessionModal() {
     } finally {
       setPending(false);
     }
-  }, [cli, cwd, resumeId, setOpen]);
+  }, [cli, tieToProject, cwd, resumeId, setOpen]);
 
   return (
-    <Modal open={open} onClose={() => setOpen(false)} title="New Session">
-      <div className="flex flex-col gap-4">
-        <div>
-          <FieldLabel>CLI</FieldLabel>
-          <div className="mt-1 flex gap-2">
-            {CLI_OPTIONS.map(({ kind, label }) => (
-              <button
-                key={kind}
-                type="button"
-                onClick={() => setCli(kind)}
-                className={cn(
-                  'flex-1 rounded-md border px-3 py-2 text-sm transition-colors',
-                  cli === kind
-                    ? 'border-accent bg-accent/10 text-ink'
-                    : 'border-edge/10 text-muted hover:border-edge/30',
-                )}
-              >
-                {label}
-              </button>
+    <Modal open={open} onClose={() => setOpen(false)} title="New chat">
+      <div className="flex flex-col gap-5">
+        <Field label="Agent">
+          <select
+            value={cli}
+            onChange={(e) => setCli(e.target.value as CliKind)}
+            className="w-full rounded-md border border-edge/10 bg-sunken px-2 py-1.5 text-sm text-ink focus:border-accent/60 focus:outline-none"
+          >
+            {CLI_OPTIONS.map(({ kind, label, description }) => (
+              <option key={kind} value={kind}>
+                {label} — {description}
+              </option>
             ))}
-          </div>
-        </div>
+          </select>
+        </Field>
 
-        <div>
-          <FieldLabel>Working directory</FieldLabel>
-          <div className="mt-1 flex gap-2">
+        <Field label="Working directory">
+          <label className="mb-2 flex cursor-pointer items-start gap-2 text-xs">
             <input
-              type="text"
-              value={cwd}
-              onChange={(e) => setCwd(e.target.value)}
-              placeholder="/path/to/project"
-              className="flex-1 rounded-md border border-edge/10 bg-sunken px-2 py-1.5 text-xs font-mono text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
+              type="checkbox"
+              checked={tieToProject}
+              onChange={(e) => setTieToProject(e.target.checked)}
+              className="mt-0.5 accent-accent"
             />
-            <Button size="md" variant="default" onClick={() => void browse()}>
-              Browse…
-            </Button>
-          </div>
-        </div>
+            <span className="text-muted">
+              <span className="text-ink">Tie to a project</span> — pick a working
+              directory so this session shows up under <span className="text-ink">Projects</span>.
+              Otherwise it lives in <span className="text-ink">Chats</span> with a
+              sandboxed scratch dir.
+            </span>
+          </label>
+          {tieToProject && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={cwd}
+                onChange={(e) => setCwd(e.target.value)}
+                placeholder="/path/to/project"
+                className="flex-1 rounded-md border border-edge/10 bg-sunken px-2 py-1.5 font-mono text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
+              />
+              <Button size="md" variant="default" onClick={() => void browse()}>
+                Browse…
+              </Button>
+            </div>
+          )}
+        </Field>
 
-        {resumable && resumable.length > 0 && (
-          <div>
-            <FieldLabel>Resume an existing session?</FieldLabel>
-            <ul className="mt-1 max-h-44 overflow-y-auto rounded-md border border-edge/10 bg-sunken">
+        {tieToProject && resumable && resumable.length > 0 && (
+          <Field label="Resume an existing session?">
+            <ul className="max-h-44 overflow-y-auto rounded-md border border-edge/10 bg-sunken">
               <li>
                 <button
                   type="button"
@@ -160,7 +171,7 @@ export function NewSessionModal() {
                 </li>
               ))}
             </ul>
-          </div>
+          </Field>
         )}
 
         {error && (
@@ -177,7 +188,7 @@ export function NewSessionModal() {
             size="md"
             variant="primary"
             onClick={() => void submit()}
-            disabled={pending || !cwd}
+            disabled={pending || (tieToProject && !cwd)}
           >
             {pending ? 'Starting…' : resumeId ? 'Resume' : 'Start'}
           </Button>
@@ -187,6 +198,11 @@ export function NewSessionModal() {
   );
 }
 
-function FieldLabel({ children }: { children: ReactNode }) {
-  return <div className="text-[10px] uppercase tracking-wider text-subtle">{children}</div>;
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1.5 text-[10px] uppercase tracking-wider text-subtle">{label}</div>
+      {children}
+    </div>
+  );
 }

@@ -107,7 +107,16 @@ const sessionApi = {
 
 const envApi = {
   homedir: (): string => process.env.HOME ?? '/',
+  shell: (): string => process.env.SHELL || '/bin/zsh',
   platform: process.platform,
+  /**
+   * Root for ad-hoc Chat working dirs. Renderer treats any session whose
+   * cwd starts with this as a Chat (vs a Project session).
+   * Falls back to a sane macOS default if main hasn't injected the env.
+   */
+  chatsBaseDir: (): string =>
+    process.env.AGENT_DASHBOARD_CHATS_DIR ??
+    `${process.env.HOME ?? '/'}/Library/Application Support/agent-dashboard/chats`,
 };
 
 const hooksApi = {

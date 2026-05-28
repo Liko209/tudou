@@ -74,7 +74,16 @@ export interface SessionDataPushPayload {
 
 export interface SessionSpawnRequest {
   cli: CliKind;
-  cwd: string;
+  /**
+   * Working dir for the CLI. Required when `chat` is false (project mode);
+   * ignored when `chat` is true (main generates a hidden per-chat dir).
+   */
+  cwd?: string;
+  /**
+   * Treat this spawn as an ad-hoc "chat" not tied to any project.
+   * Main allocates a unique hidden working dir for it.
+   */
+  chat?: boolean;
   cols: number;
   rows: number;
   spawnArgs?: {

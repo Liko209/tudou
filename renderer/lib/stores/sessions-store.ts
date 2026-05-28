@@ -103,3 +103,30 @@ export function groupSessionsByCwd(
       return aT < bT ? 1 : -1;
     });
 }
+
+/**
+ * Split sessions into projects (grouped by cwd) vs chats (flat list).
+ * A session is a Chat if its cwd lives under `chatsBaseDir`.
+ */
+export function partitionSessions(
+  sessions: Record<string, Session>,
+  chatsBaseDir: string,
+): {
+  projects: Array<{ cwd: string; items: Session[] }>;
+  chats: Session[];
+} {
+  const projectSessions: Record<string, Session> = {};
+  const chats: Session[] = [];
+  for (const [id, s] of Object.entries(sessions)) {
+    if (chatsBaseDir && s.cwd.startsWith(chatsBaseDir)) {
+      chats.push(s);
+    } else {
+      projectSessions[id] = s;
+    }
+  }
+  chats.sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1));
+  return {
+    projects: groupSessionsByCwd(projectSessions),
+    chats,
+  };
+}

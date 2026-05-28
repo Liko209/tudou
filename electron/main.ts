@@ -1,8 +1,14 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { PtyManager } from './pty-manager';
-import { registerPtyIpc, registerSessionIpc, registerHookIpc, registerPreferencesIpc } from './ipc';
-import { SessionRegistry } from './session-registry';
+import {
+  registerPtyIpc,
+  registerSessionIpc,
+  registerHookIpc,
+  registerPreferencesIpc,
+  chatsBaseDir,
+} from './ipc';
+import { SessionRegistry, setChatsBaseDir } from './session-registry';
 import { SessionPersistence } from './session-persistence';
 import { PreferencesStore } from './preferences';
 import { HookServer } from './hook-server';
@@ -112,6 +118,13 @@ if (!gotLock) {
     if (!persistenceLoaded) {
       await sessionPersistence.load();
       preferencesStore.load();
+      // Tell SessionRegistry where ad-hoc Chat working dirs live so it can
+      // pick the right autoName (Chat dirs lead with the CLI name; Project
+      // dirs lead with basename(cwd)). Also export to env so the preload
+      // layer can give the renderer the same value.
+      const chatsDir = chatsBaseDir();
+      setChatsBaseDir(chatsDir);
+      process.env.AGENT_DASHBOARD_CHATS_DIR = chatsDir;
       persistenceLoaded = true;
     }
     if (!hookServerStarted) {

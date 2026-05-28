@@ -18,8 +18,11 @@ beforeEach(() => {
   useSessionsStore.setState({ sessions: {}, activeId: null });
   useUIStore.setState({
     leftCollapsed: false,
-    rightCollapsed: false,
+    rightPanelOpen: false,
+    bottomPanelOpen: false,
     newSessionOpen: false,
+    hookModalOpen: false,
+    settingsOpen: false,
   });
 });
 
@@ -102,25 +105,20 @@ describe('sessionsStore', () => {
 });
 
 describe('uiStore', () => {
-  it('toggleLeft / toggleRight flip independently', () => {
+  it('toggleLeft flips left sidebar collapse', () => {
     useUIStore.getState().toggleLeft();
     expect(useUIStore.getState().leftCollapsed).toBe(true);
-    expect(useUIStore.getState().rightCollapsed).toBe(false);
-    useUIStore.getState().toggleRight();
-    expect(useUIStore.getState().rightCollapsed).toBe(true);
-  });
-
-  it('toggleSides collapses both when at least one is visible', () => {
-    useUIStore.getState().toggleSides();
-    expect(useUIStore.getState().leftCollapsed).toBe(true);
-    expect(useUIStore.getState().rightCollapsed).toBe(true);
-  });
-
-  it('toggleSides expands both when both are hidden', () => {
-    useUIStore.setState({ leftCollapsed: true, rightCollapsed: true });
-    useUIStore.getState().toggleSides();
+    useUIStore.getState().toggleLeft();
     expect(useUIStore.getState().leftCollapsed).toBe(false);
-    expect(useUIStore.getState().rightCollapsed).toBe(false);
+  });
+
+  it('setRightPanelOpen / setBottomPanelOpen track dock panel visibility', () => {
+    useUIStore.getState().setRightPanelOpen(true);
+    expect(useUIStore.getState().rightPanelOpen).toBe(true);
+    useUIStore.getState().setBottomPanelOpen(true);
+    expect(useUIStore.getState().bottomPanelOpen).toBe(true);
+    useUIStore.getState().setRightPanelOpen(false);
+    expect(useUIStore.getState().rightPanelOpen).toBe(false);
   });
 
   it('setNewSessionOpen toggles modal state', () => {

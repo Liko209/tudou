@@ -1,4 +1,7 @@
-import { dialog, ipcMain, type BrowserWindow } from 'electron';
+import { app, dialog, ipcMain, type BrowserWindow } from 'electron';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import {
   IpcChannels,
   type CliKind,
@@ -79,9 +82,22 @@ export function registerSessionIpc(
           `Cannot launch ${request.cli}: binary not found on PATH. Run \`which ${request.cli}\` in a shell to confirm, or set a custom path in Settings.`,
         );
       }
+
+      // Ad-hoc chat: allocate a hidden per-chat working dir so the chat
+      // is isolated from any real project and won't pollute the user's
+      // $HOME with claude/codex project metadata.
+      let cwd = request.cwd ?? '';
+      if (request.chat) {
+        cwd = join(chatsBaseDir(), randomUUID());
+        mkdirSync(cwd, { recursive: true });
+      }
+      if (!cwd) {
+        throw new Error('sessionSpawn: cwd is required when chat=false');
+      }
+
       const { session } = registry.spawn({
         cli: request.cli,
-        cwd: request.cwd,
+        cwd,
         cols: request.cols,
         rows: request.rows,
         shellPath,
@@ -159,6 +175,11 @@ export function registerSessionIpc(
     registry.off('remove', onRemove);
     registry.off('data', onData);
   });
+}
+
+/** Resolve the directory where ad-hoc chats live. */
+export function chatsBaseDir(): string {
+  return join(app.getPath('userData'), 'chats');
 }
 
 /** Hook installer / status IPC. */

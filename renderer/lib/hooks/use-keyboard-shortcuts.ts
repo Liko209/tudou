@@ -25,7 +25,7 @@ export function useKeyboardShortcuts(): void {
 
       if (e.key === '\\') {
         e.preventDefault();
-        useUIStore.getState().toggleSides();
+        useUIStore.getState().toggleLeft();
         return;
       }
 
