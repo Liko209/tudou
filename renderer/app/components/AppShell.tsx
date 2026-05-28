@@ -4,34 +4,24 @@ import { useEffect, useState } from 'react';
 import { cn } from '../../lib/utils';
 import { useUIStore } from '../../lib/stores/ui-store';
 import { useSessionBridge } from '../../lib/hooks/use-session-bridge';
+import { useKeyboardShortcuts } from '../../lib/hooks/use-keyboard-shortcuts';
 import { Toolbar } from './Toolbar';
 import { SessionList } from './SessionList';
 import { SidePanel } from './SidePanel';
 import { CenterPane } from './CenterPane';
+import { NewSessionModal } from './NewSessionModal';
 
 export function AppShell() {
   const leftCollapsed = useUIStore((s) => s.leftCollapsed);
   const rightCollapsed = useUIStore((s) => s.rightCollapsed);
-  const toggleSides = useUIStore((s) => s.toggleSides);
   const [version, setVersion] = useState('—');
 
-  // Live wire: keep the Zustand store in sync with SessionRegistry over IPC.
   useSessionBridge();
+  useKeyboardShortcuts();
 
   useEffect(() => {
     setVersion(window.agentDashboard?.version ?? '—');
   }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.metaKey && e.key === '\\') {
-        e.preventDefault();
-        toggleSides();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [toggleSides]);
 
   return (
     <div className="flex h-screen flex-col">
@@ -57,6 +47,7 @@ export function AppShell() {
           <SidePanel />
         </aside>
       </div>
+      <NewSessionModal />
     </div>
   );
 }

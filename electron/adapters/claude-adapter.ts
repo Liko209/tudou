@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import chokidar from 'chokidar';
 import { tailJsonl } from './jsonl-tail';
 import { estimateCost } from './cost-calculator';
@@ -41,6 +42,21 @@ export class ClaudeAdapter implements CliAdapter {
     if (input.model) args.push('--model', input.model);
     if (input.effort) args.push('--effort', input.effort);
     return args;
+  }
+
+  async findFileBySessionId(cwd: string, sessionId: string): Promise<string | null> {
+    const path = join(
+      this.claudeHome,
+      'projects',
+      encodeProjectPath(cwd),
+      `${sessionId}.jsonl`,
+    );
+    try {
+      await stat(path);
+      return path;
+    } catch {
+      return null;
+    }
   }
 
   async locateSessionFile(
@@ -236,49 +252,52 @@ export class ClaudeAdapter implements CliAdapter {
   }
 
   async listResumable(cwd: string): Promise<ResumableSession[]> {
-    const indexPath = join(
-      this.claudeHome,
-      'projects',
-      encodeProjectPath(cwd),
-      'sessions-index.json',
-    );
-    let raw: string;
+    const projectDir = join(this.claudeHome, 'projects', encodeProjectPath(cwd));
+    const indexPath = join(projectDir, 'sessions-index.json');
+
+    // Preferred path: claude wrote sessions-index.json with rich metadata.
+    let raw: string | null = null;
     try {
       raw = await readFile(indexPath, 'utf8');
     } catch (e: unknown) {
-      if (isErrno(e) && e.code === 'ENOENT') return [];
-      throw e;
+      if (!(isErrno(e) && e.code === 'ENOENT')) throw e;
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return [];
+    if (raw !== null) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return scanProjectDirForSessions(projectDir, cwd);
+      }
+      const entries = isRecord(parsed) && Array.isArray(parsed.entries) ? parsed.entries : [];
+      const results: ResumableSession[] = [];
+      for (const entry of entries) {
+        if (!isRecord(entry)) continue;
+        if (entry.isSidechain === true) continue;
+        if (typeof entry.projectPath === 'string' && entry.projectPath !== cwd) continue;
+        if (typeof entry.sessionId !== 'string') continue;
+        results.push({
+          cli: 'claude',
+          cliSessionId: entry.sessionId,
+          firstPrompt: typeof entry.firstPrompt === 'string' ? entry.firstPrompt : '',
+          summary: typeof entry.summary === 'string' ? entry.summary : null,
+          messageCount: numberFrom(entry.messageCount),
+          modified: typeof entry.modified === 'string' ? entry.modified : '',
+          gitBranch:
+            typeof entry.gitBranch === 'string' && entry.gitBranch.length > 0
+              ? entry.gitBranch
+              : null,
+          cwd: typeof entry.projectPath === 'string' ? entry.projectPath : cwd,
+        });
+      }
+      results.sort((a, b) => (a.modified < b.modified ? 1 : -1));
+      return results;
     }
 
-    const entries = isRecord(parsed) && Array.isArray(parsed.entries) ? parsed.entries : [];
-    const results: ResumableSession[] = [];
-    for (const entry of entries) {
-      if (!isRecord(entry)) continue;
-      if (entry.isSidechain === true) continue;
-      if (typeof entry.projectPath === 'string' && entry.projectPath !== cwd) continue;
-      if (typeof entry.sessionId !== 'string') continue;
-      results.push({
-        cli: 'claude',
-        cliSessionId: entry.sessionId,
-        firstPrompt: typeof entry.firstPrompt === 'string' ? entry.firstPrompt : '',
-        summary: typeof entry.summary === 'string' ? entry.summary : null,
-        messageCount: numberFrom(entry.messageCount),
-        modified: typeof entry.modified === 'string' ? entry.modified : '',
-        gitBranch: typeof entry.gitBranch === 'string' && entry.gitBranch.length > 0
-          ? entry.gitBranch
-          : null,
-        cwd: typeof entry.projectPath === 'string' ? entry.projectPath : cwd,
-      });
-    }
-    results.sort((a, b) => (a.modified < b.modified ? 1 : -1));
-    return results;
+    // Fallback: most older projects don't have sessions-index.json. Scan
+    // the project dir for *.jsonl files and reconstruct minimal metadata.
+    return scanProjectDirForSessions(projectDir, cwd);
   }
 }
 
@@ -321,6 +340,96 @@ function extractToolDescription(input: unknown): string {
 
 function isErrno(e: unknown): e is NodeJS.ErrnoException {
   return typeof e === 'object' && e !== null && 'code' in e;
+}
+
+/**
+ * Reconstruct a resumable session list by scanning the project dir directly.
+ * Used when claude hasn't written sessions-index.json (older projects). We
+ * peek the first user message line of each jsonl for `firstPrompt`.
+ */
+async function scanProjectDirForSessions(
+  projectDir: string,
+  cwd: string,
+): Promise<ResumableSession[]> {
+  let entries: string[];
+  try {
+    entries = await readdir(projectDir);
+  } catch (e) {
+    if (isErrno(e) && e.code === 'ENOENT') return [];
+    throw e;
+  }
+
+  const jsonlNames = entries.filter((n) => SESSION_ID_RE.test(n));
+  const results = await Promise.all(
+    jsonlNames.map(async (name): Promise<ResumableSession | null> => {
+      const path = join(projectDir, name);
+      const sessionId = name.replace(/\.jsonl$/, '');
+      try {
+        const st = await stat(path);
+        if (!st.isFile() || st.size === 0) return null;
+        const firstPrompt = (await peekFirstUserPrompt(path)) ?? '';
+        return {
+          cli: 'claude',
+          cliSessionId: sessionId,
+          firstPrompt,
+          summary: null,
+          messageCount: 0, // not worth scanning the whole file just for this
+          modified: st.mtime.toISOString(),
+          gitBranch: null,
+          cwd,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return results
+    .filter((r): r is ResumableSession => r !== null)
+    .sort((a, b) => (a.modified < b.modified ? 1 : -1));
+}
+
+/**
+ * Stream-read a Claude JSONL until the first `type:"user"` line with
+ * string content, return its content (truncated). Cap at 1MB.
+ */
+async function peekFirstUserPrompt(file: string): Promise<string | null> {
+  const MAX = 1024 * 1024;
+  let buffer = '';
+  try {
+    const stream = createReadStream(file, { encoding: 'utf8', highWaterMark: 16384 });
+    for await (const chunk of stream) {
+      buffer += chunk;
+      let nl: number;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        try {
+          const parsed = JSON.parse(line);
+          if (
+            isRecord(parsed) &&
+            parsed.type === 'user' &&
+            isRecord(parsed.message) &&
+            typeof parsed.message.content === 'string' &&
+            parsed.message.content.length > 0
+          ) {
+            stream.destroy();
+            const text = parsed.message.content as string;
+            return text.length > 120 ? text.slice(0, 119) + '…' : text;
+          }
+        } catch {
+          // skip malformed line
+        }
+      }
+      if (buffer.length > MAX) {
+        stream.destroy();
+        return null;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 async function findNewestJsonl(dir: string, sinceMs: number): Promise<string | null> {

@@ -138,7 +138,13 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     this.ptyToSession.set(ptyId, sessionId);
     this.emit('add', session);
 
-    void this.startWatching(sessionId, request.cli, request.cwd, startedAt);
+    void this.startWatching(
+      sessionId,
+      request.cli,
+      request.cwd,
+      startedAt,
+      request.spawnArgs?.resume,
+    );
 
     return { session, ptyId };
   }
@@ -196,13 +202,24 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     cli: CliKind,
     cwd: string,
     after: Date,
+    resumeId?: string,
   ): Promise<void> {
     const adapter = this.adapters[cli];
     const controller = new AbortController();
     this.adapterControllers.set(sessionId, controller);
 
     try {
-      const file = await adapter.locateSessionFile(cwd, after, controller.signal);
+      // Resume fast-path: we know the file exactly, no need to wait for
+      // the CLI to materialize it. Parser reads existing content and
+      // promotes status from 'starting' → whatever the last line says
+      // (usually 'waiting').
+      let file: string | null = null;
+      if (resumeId) {
+        file = await adapter.findFileBySessionId(cwd, resumeId);
+      }
+      if (!file) {
+        file = await adapter.locateSessionFile(cwd, after, controller.signal);
+      }
       if (!file || controller.signal.aborted) return;
 
       for await (const update of adapter.watch(file, controller.signal)) {
@@ -210,8 +227,6 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
         this.applyUpdate(sessionId, update);
       }
     } catch (err) {
-      // Adapter failed — session still runs from the user's POV, but
-      // we won't have structured updates. Don't crash the registry.
       if (this.sessions.has(sessionId)) {
         this.markErrored(sessionId, err);
       }

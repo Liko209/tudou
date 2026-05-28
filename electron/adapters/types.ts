@@ -42,6 +42,15 @@ export interface CliAdapter {
   locateSessionFile(cwd: string, after: Date, signal?: AbortSignal): Promise<string | null>;
 
   /**
+   * Resume fast-path: given a CLI-native session id, return the existing
+   * JSONL file path directly (no waiting / probing). Used when the user
+   * picked a resumable session from the New Session picker — we already
+   * know the id, so we don't need locate's "find the newest file"
+   * heuristic. Returns null if the file isn't where we expect.
+   */
+  findFileBySessionId(cwd: string, sessionId: string): Promise<string | null>;
+
+  /**
    * Tail a JSONL session file and emit SessionUpdate snapshots as it grows.
    * Yields until `signal` aborts. Errors propagate.
    */

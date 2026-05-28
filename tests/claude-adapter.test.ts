@@ -166,10 +166,72 @@ describe('ClaudeAdapter.listResumable', () => {
     expect(list[0]?.gitBranch).toBe('feat/async-parser');
   });
 
-  it('returns empty list when no sessions-index.json exists', async () => {
+  it('returns empty list when the project dir does not exist', async () => {
     const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
     const list = await adapter.listResumable('/Users/fixture/never/touched');
     expect(list).toEqual([]);
+  });
+
+  it('falls back to dir scan when sessions-index.json is missing (older projects)', async () => {
+    const cwd = '/Users/fixture/workspace/no-index';
+    const dir = join(CLAUDE_HOME, 'projects', encodeProjectPath(cwd));
+    await mkdir(dir, { recursive: true });
+
+    // Make two valid jsonl files with the session-id filename shape
+    const sess1 = 'aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb';
+    const sess2 = 'cccccccc-1111-2222-3333-dddddddddddd';
+    await writeFile(
+      join(dir, `${sess1}.jsonl`),
+      JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: 'Hello first session prompt' },
+      }) + '\n',
+    );
+    await writeFile(
+      join(dir, `${sess2}.jsonl`),
+      JSON.stringify({
+        type: 'mode',
+        mode: 'default',
+        sessionId: sess2,
+      }) + '\n' +
+        JSON.stringify({
+          type: 'user',
+          message: { role: 'user', content: 'Second session here' },
+        }) + '\n',
+    );
+
+    const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
+    const list = await adapter.listResumable(cwd);
+
+    expect(list.length).toBe(2);
+    const ids = list.map((s) => s.cliSessionId).sort();
+    expect(ids).toEqual([sess1, sess2].sort());
+    const prompts = list.map((s) => s.firstPrompt).filter(Boolean);
+    expect(prompts).toContain('Hello first session prompt');
+    expect(prompts).toContain('Second session here');
+  });
+});
+
+describe('ClaudeAdapter.findFileBySessionId', () => {
+  it('returns the absolute path when the file exists', async () => {
+    const cwd = '/Users/fixture/workspace/has-file';
+    const dir = join(CLAUDE_HOME, 'projects', encodeProjectPath(cwd));
+    await mkdir(dir, { recursive: true });
+    const id = 'deadbeef-1234-5678-9abc-def012345678';
+    const path = join(dir, `${id}.jsonl`);
+    await writeFile(path, '');
+
+    const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
+    expect(await adapter.findFileBySessionId(cwd, id)).toBe(path);
+  });
+
+  it('returns null when the file does not exist', async () => {
+    const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
+    const result = await adapter.findFileBySessionId(
+      '/Users/fixture/nothing',
+      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    );
+    expect(result).toBeNull();
   });
 });
 

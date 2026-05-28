@@ -43,6 +43,12 @@ export class CodexAdapter implements CliAdapter {
     return [];
   }
 
+  async findFileBySessionId(_cwd: string, sessionId: string): Promise<string | null> {
+    // Codex spreads rollout files across sessions/YYYY/MM/DD/ and
+    // archived_sessions/, but each file's name embeds the session id.
+    return findRolloutById(this.codexHome, sessionId);
+  }
+
   async locateSessionFile(
     cwd: string,
     after: Date,

@@ -70,6 +70,9 @@ class FakeAdapter implements CliAdapter {
   async locateSessionFile(): Promise<string | null> {
     return this.locatedFile;
   }
+  async findFileBySessionId(): Promise<string | null> {
+    return this.locatedFile;
+  }
   async *watch(file: string, signal?: AbortSignal): AsyncIterable<SessionUpdate> {
     this.watchCalls.push({ file, signal });
     this.onWatchStart?.();
