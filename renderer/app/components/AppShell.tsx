@@ -10,6 +10,7 @@ import { SessionList } from './SessionList';
 import { SidePanel } from './SidePanel';
 import { CenterPane } from './CenterPane';
 import { NewSessionModal } from './NewSessionModal';
+import { ResumeBanner } from './ResumeBanner';
 
 export function AppShell() {
   const leftCollapsed = useUIStore((s) => s.leftCollapsed);
@@ -26,6 +27,7 @@ export function AppShell() {
   return (
     <div className="flex h-screen flex-col">
       <Toolbar version={version} />
+      <ResumeBanner />
       <div className="flex flex-1 min-h-0">
         <aside
           className={cn(

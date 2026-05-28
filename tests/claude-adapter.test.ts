@@ -153,6 +153,10 @@ describe('ClaudeAdapter.listResumable', () => {
     const dir = join(CLAUDE_HOME, 'projects', encodeProjectPath(cwd));
     await mkdir(dir, { recursive: true });
     await copyFile(FIXTURE_INDEX, join(dir, 'sessions-index.json'));
+    // listResumable requires the jsonl file actually exist (we filter
+    // ghost index entries that point to since-deleted files).
+    await writeFile(join(dir, '11111111-2222-3333-4444-555555555555.jsonl'), '');
+    await writeFile(join(dir, '22222222-3333-4444-5555-666666666666.jsonl'), '');
 
     const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
     const list = await adapter.listResumable(cwd);
@@ -164,6 +168,50 @@ describe('ClaudeAdapter.listResumable', () => {
     expect(list[0]?.cli).toBe('claude');
     expect(list[0]?.firstPrompt).toBe('Refactor the parser to be async.');
     expect(list[0]?.gitBranch).toBe('feat/async-parser');
+  });
+
+  it('filters out ghost entries whose jsonl file no longer exists', async () => {
+    const cwd = '/Users/fixture/workspace/ghost-test';
+    const dir = join(CLAUDE_HOME, 'projects', encodeProjectPath(cwd));
+    await mkdir(dir, { recursive: true });
+    // Write index referencing 2 ids, but only create file for 1 of them
+    const live = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const ghost = 'ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb';
+    await writeFile(
+      join(dir, 'sessions-index.json'),
+      JSON.stringify({
+        version: 1,
+        entries: [
+          {
+            sessionId: live,
+            firstPrompt: 'still here',
+            summary: 'Live',
+            messageCount: 2,
+            created: '2026-05-01T00:00:00.000Z',
+            modified: '2026-05-01T00:00:00.000Z',
+            gitBranch: 'main',
+            projectPath: cwd,
+            isSidechain: false,
+          },
+          {
+            sessionId: ghost,
+            firstPrompt: 'jsonl was deleted out from under the index',
+            summary: 'Ghost',
+            messageCount: 0,
+            created: '2026-04-01T00:00:00.000Z',
+            modified: '2026-04-01T00:00:00.000Z',
+            gitBranch: 'main',
+            projectPath: cwd,
+            isSidechain: false,
+          },
+        ],
+      }),
+    );
+    await writeFile(join(dir, `${live}.jsonl`), '');
+
+    const adapter = new ClaudeAdapter({ claudeHome: CLAUDE_HOME });
+    const list = await adapter.listResumable(cwd);
+    expect(list.map((s) => s.cliSessionId)).toEqual([live]);
   });
 
   it('returns empty list when the project dir does not exist', async () => {

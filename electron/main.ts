@@ -3,17 +3,26 @@ import { join } from 'node:path';
 import { PtyManager } from './pty-manager';
 import { registerPtyIpc, registerSessionIpc } from './ipc';
 import { SessionRegistry } from './session-registry';
+import { SessionPersistence } from './session-persistence';
 import { LifecycleManager } from './lifecycle-manager';
 import { ClaudeAdapter } from './adapters/claude-adapter';
 import { CodexAdapter } from './adapters/codex-adapter';
 
 const isDev = process.env.NODE_ENV === 'development';
 const ptyManager = new PtyManager();
-const sessionRegistry = new SessionRegistry(ptyManager, {
-  claude: new ClaudeAdapter(),
-  codex: new CodexAdapter(),
-});
+const sessionPersistence = new SessionPersistence(
+  join(app.getPath('userData'), 'sessions.json'),
+);
+const sessionRegistry = new SessionRegistry(
+  ptyManager,
+  {
+    claude: new ClaudeAdapter(),
+    codex: new CodexAdapter(),
+  },
+  sessionPersistence,
+);
 let lifecycle: LifecycleManager | null = null;
+let persistenceLoaded = false;
 
 function resolvePreloadPath(): string {
   return join(__dirname, 'preload.js');
@@ -75,7 +84,11 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    if (!persistenceLoaded) {
+      await sessionPersistence.load();
+      persistenceLoaded = true;
+    }
     void createMainWindow();
 
     app.on('activate', () => {
@@ -95,6 +108,8 @@ if (!gotLock) {
   });
 
   app.on('will-quit', () => {
+    // SessionPersistence writes synchronously on every mutation, so
+    // there's nothing to flush here — just tear down the live state.
     lifecycle?.dispose();
     sessionRegistry.disposeAll();
   });

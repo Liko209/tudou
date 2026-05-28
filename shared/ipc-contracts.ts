@@ -41,6 +41,9 @@ export const IpcChannels = {
   sessionWrite: 'session:write',
   sessionResize: 'session:resize',
   sessionListResumable: 'session:list-resumable',
+  sessionListPrevious: 'session:list-previous',
+  sessionDismissPrevious: 'session:dismiss-previous',
+  sessionDismissAllPrevious: 'session:dismiss-all-previous',
   cliResolvePath: 'cli:resolve-path',
   dialogPickDirectory: 'dialog:pick-directory',
 

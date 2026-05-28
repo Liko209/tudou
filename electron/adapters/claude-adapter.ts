@@ -271,15 +271,39 @@ export class ClaudeAdapter implements CliAdapter {
         return scanProjectDirForSessions(projectDir, cwd);
       }
       const entries = isRecord(parsed) && Array.isArray(parsed.entries) ? parsed.entries : [];
-      const results: ResumableSession[] = [];
+      const candidates: Array<{ entry: Record<string, unknown>; path: string }> = [];
       for (const entry of entries) {
         if (!isRecord(entry)) continue;
         if (entry.isSidechain === true) continue;
         if (typeof entry.projectPath === 'string' && entry.projectPath !== cwd) continue;
         if (typeof entry.sessionId !== 'string') continue;
+        // Always derive from projectDir + sessionId — the index's
+        // `fullPath` field is denormalized and goes stale if the project
+        // dir was ever renamed/moved.
+        const path = join(projectDir, `${entry.sessionId}.jsonl`);
+        candidates.push({ entry, path });
+      }
+
+      // Filter out ghost entries — Claude's index keeps records that point
+      // to jsonl files the user (or claude itself) has since deleted; trying
+      // to --resume one of those errors out with "No conversation found".
+      const liveChecks = await Promise.all(
+        candidates.map(async ({ entry, path }) => {
+          try {
+            await stat(path);
+            return entry;
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      const results: ResumableSession[] = [];
+      for (const entry of liveChecks) {
+        if (!entry) continue;
         results.push({
           cli: 'claude',
-          cliSessionId: entry.sessionId,
+          cliSessionId: entry.sessionId as string,
           firstPrompt: typeof entry.firstPrompt === 'string' ? entry.firstPrompt : '',
           summary: typeof entry.summary === 'string' ? entry.summary : null,
           messageCount: numberFrom(entry.messageCount),

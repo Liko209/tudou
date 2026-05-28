@@ -104,6 +104,14 @@ export function registerSessionIpc(
     async (_e, cli: CliKind, cwd: string) => registry.listResumable(cli, cwd),
   );
 
+  ipcMain.handle(IpcChannels.sessionListPrevious, () => registry.listPrevious());
+  ipcMain.handle(IpcChannels.sessionDismissPrevious, (_e, id: string) => {
+    registry.dismissPrevious(id);
+  });
+  ipcMain.handle(IpcChannels.sessionDismissAllPrevious, () => {
+    registry.dismissAllPrevious();
+  });
+
   ipcMain.handle(IpcChannels.cliResolvePath, (_e, name: string) => resolveCliPath(name));
 
   ipcMain.handle(IpcChannels.dialogPickDirectory, async (_e, opts?: { defaultPath?: string }) => {

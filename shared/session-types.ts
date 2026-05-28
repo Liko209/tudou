@@ -73,3 +73,20 @@ export interface ResumableSession {
   gitBranch: string | null;
   cwd: string;
 }
+
+/**
+ * One entry in the "previous sessions" banner shown on dashboard startup.
+ * Built by reconciling the persistence store against each CLI's on-disk
+ * session files.
+ */
+export interface PreviousSession {
+  /** Dashboard-internal id from the persisted record. */
+  id: string;
+  cli: CliKind;
+  cliSessionId: string | null;
+  cwd: string;
+  displayName: string;
+  startedAt: string;
+  /** Is the underlying CLI session file still present and resumable? */
+  resumable: boolean;
+}

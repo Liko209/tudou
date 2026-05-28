@@ -8,7 +8,7 @@ import {
   type SessionDataPushPayload,
   type SessionSpawnRequest,
 } from '../shared/ipc-contracts';
-import type { ResumableSession, Session } from '../shared/session-types';
+import type { PreviousSession, ResumableSession, Session } from '../shared/session-types';
 
 const ptyApi = {
   spawn: (opts: PtySpawnOptions): Promise<string> =>
@@ -55,6 +55,12 @@ const sessionApi = {
     ipcRenderer.invoke(IpcChannels.sessionResize, id, cols, rows),
   listResumable: (cli: CliKind, cwd: string): Promise<ResumableSession[]> =>
     ipcRenderer.invoke(IpcChannels.sessionListResumable, cli, cwd),
+  listPrevious: (): Promise<PreviousSession[]> =>
+    ipcRenderer.invoke(IpcChannels.sessionListPrevious),
+  dismissPrevious: (id: string): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.sessionDismissPrevious, id),
+  dismissAllPrevious: (): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.sessionDismissAllPrevious),
   resolveCliPath: (name: CliKind | string): Promise<string | null> =>
     ipcRenderer.invoke(IpcChannels.cliResolvePath, name),
   pickDirectory: (opts?: { defaultPath?: string }): Promise<string | null> =>
@@ -103,7 +109,7 @@ const envApi = {
 };
 
 contextBridge.exposeInMainWorld('agentDashboard', {
-  version: '0.1.0-m6',
+  version: '0.1.0-m8',
   pty: ptyApi,
   sessions: sessionApi,
   env: envApi,

@@ -5,12 +5,14 @@ import type { CliKind, PtyDataEvent, PtyExitEvent } from '../shared/ipc-contract
 import type {
   CurrentTool,
   LatestMessage,
+  PreviousSession,
   Session,
   SessionMetrics,
   SessionStatus,
   SessionUpdate,
 } from '../shared/session-types';
 import { sanitizeSpawnEnv } from './env-sanitizer';
+import type { SessionPersistence } from './session-persistence';
 import type { CliAdapter, SpawnArgsInput } from './adapters/types';
 
 /** Narrow view of PtyManager used by SessionRegistry — keeps tests light. */
@@ -70,6 +72,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
   constructor(
     private readonly pty: PtyHandle,
     private readonly adapters: Record<CliKind, CliAdapter>,
+    private readonly persistence?: SessionPersistence,
   ) {
     super();
     this.onPtyExit = (event) => this.handlePtyExit(event);
@@ -136,6 +139,25 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
 
     this.sessions.set(sessionId, session);
     this.ptyToSession.set(ptyId, sessionId);
+
+    // Persistence: drop any stale prior record for the resumed cli session
+    // (so we don't accumulate duplicates over many resumes), then write a
+    // provisional record for this new spawn. cliSessionId will be patched
+    // in once the adapter discovers it.
+    if (this.persistence) {
+      if (request.spawnArgs?.resume) {
+        this.persistence.removeByCliSessionId(request.cli, request.spawnArgs.resume);
+      }
+      this.persistence.upsert({
+        id: sessionId,
+        cli: request.cli,
+        cliSessionId: request.spawnArgs?.resume ?? null,
+        cwd: request.cwd,
+        displayName: session.displayName,
+        startedAt: session.startedAt,
+      });
+    }
+
     this.emit('add', session);
 
     void this.startWatching(
@@ -160,6 +182,52 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     return this.adapters[cli].listResumable(cwd);
   }
 
+  /**
+   * Reconcile persisted records against the CLIs' on-disk session files.
+   * Each persisted record becomes a PreviousSession marked `resumable`
+   * (file still present) or not (file gone, e.g. CLI history cleared).
+   */
+  async listPrevious(): Promise<PreviousSession[]> {
+    if (!this.persistence) return [];
+    const records = this.persistence.list();
+    const result: PreviousSession[] = [];
+    for (const rec of records) {
+      let resumable = false;
+      if (rec.cliSessionId) {
+        const file = await this.adapters[rec.cli].findFileBySessionId(
+          rec.cwd,
+          rec.cliSessionId,
+        );
+        resumable = file !== null;
+      }
+      result.push({
+        id: rec.id,
+        cli: rec.cli,
+        cliSessionId: rec.cliSessionId,
+        cwd: rec.cwd,
+        displayName: rec.displayName,
+        startedAt: rec.startedAt,
+        resumable,
+      });
+    }
+    // Newest first.
+    return result.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+  }
+
+  /** Drop a single persisted record (no live session involved). */
+  dismissPrevious(id: string): void {
+    this.persistence?.remove(id);
+  }
+
+  /** Drop all persisted records that are NOT currently live. */
+  dismissAllPrevious(): void {
+    if (!this.persistence) return;
+    const live = new Set(this.sessions.keys());
+    for (const rec of this.persistence.list()) {
+      if (!live.has(rec.id)) this.persistence.remove(rec.id);
+    }
+  }
+
   /** Forward user keystrokes (or pasted text) to the session's PTY. */
   write(sessionId: string, data: string): void {
     const ptyId = this.ptyIdFor(sessionId);
@@ -182,6 +250,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     for (const [ptyId, sid] of this.ptyToSession) {
       if (sid === sessionId) this.ptyToSession.delete(ptyId);
     }
+    this.persistence?.remove(sessionId);
     this.emit('remove', { id: sessionId });
   }
 
@@ -247,6 +316,16 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       lastActivityAt: new Date().toISOString(),
     };
     this.sessions.set(sessionId, next);
+
+    // Persist newly-discovered cliSessionId so future resumes can find it.
+    if (
+      this.persistence &&
+      update.cliSessionId !== undefined &&
+      update.cliSessionId !== current.cliSessionId
+    ) {
+      this.persistence.patch(sessionId, { cliSessionId: update.cliSessionId });
+    }
+
     this.emit('update', next);
   }
 
