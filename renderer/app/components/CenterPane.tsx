@@ -1,35 +1,56 @@
 'use client';
 
-import {
-  selectActiveSession,
-  useSessionsStore,
-} from '../../lib/stores/sessions-store';
+import { useMemo } from 'react';
+import { useSessionsStore } from '../../lib/stores/sessions-store';
+import { Terminal } from './Terminal';
+import { StatusDot } from './StatusDot';
 
+/**
+ * Renders one persistent <Terminal> per session and toggles visibility via
+ * display:none so the offscreen sessions keep accumulating PTY output
+ * (preserving scrollback when the user tabs away and back).
+ */
 export function CenterPane() {
-  const session = useSessionsStore(selectActiveSession);
+  const sessions = useSessionsStore((s) => s.sessions);
+  const activeId = useSessionsStore((s) => s.activeId);
+  const ids = useMemo(() => Object.keys(sessions), [sessions]);
+  const activeSession = activeId ? sessions[activeId] : null;
 
-  if (!session) {
+  if (ids.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="max-w-sm text-center text-muted">
-          <p className="text-sm">No session selected.</p>
+          <p className="text-sm">No session yet.</p>
           <p className="mt-2 text-xs">
-            Click a session card on the left, or hit{' '}
-            <kbd className="font-mono text-ink">⌘T</kbd> to start a new one.
+            Hit <kbd className="font-mono text-ink">⌘T</kbd> or use the toolbar to
+            spawn one.
           </p>
         </div>
       </div>
     );
   }
 
-  // M3 placeholder — the real xterm terminal mounts here in M5.
   return (
-    <div className="flex h-full flex-col items-center justify-center text-muted">
-      <div className="font-mono text-xs">
-        terminal mount for{' '}
-        <span className="text-ink">{session.displayName}</span> →
+    <div className="flex h-full flex-col">
+      {activeSession && (
+        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-edge/5 bg-canvas px-3 text-xs">
+          <StatusDot status={activeSession.status} confidence={activeSession.statusConfidence} />
+          <span className="text-ink font-medium">{activeSession.displayName}</span>
+          <span className="text-subtle">·</span>
+          <span className="text-muted font-mono truncate">{activeSession.cwd}</span>
+        </div>
+      )}
+      <div className="relative flex-1 min-h-0 bg-canvas">
+        {ids.map((id) => (
+          <div
+            key={id}
+            className="absolute inset-0"
+            style={{ display: id === activeId ? 'block' : 'none' }}
+          >
+            <Terminal sessionId={id} />
+          </div>
+        ))}
       </div>
-      <div className="mt-1 text-[11px]">wired in M5</div>
     </div>
   );
 }

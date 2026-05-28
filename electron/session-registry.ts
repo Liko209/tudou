@@ -10,6 +10,7 @@ import type {
   SessionStatus,
   SessionUpdate,
 } from '../shared/session-types';
+import { sanitizeSpawnEnv } from './env-sanitizer';
 import type { CliAdapter, SpawnArgsInput } from './adapters/types';
 
 /** Narrow view of PtyManager used by SessionRegistry — keeps tests light. */
@@ -22,6 +23,8 @@ export interface PtyHandle {
     rows: number;
     env?: Record<string, string>;
   }): string;
+  write(id: string, data: string): void;
+  resize(id: string, cols: number, rows: number): void;
   kill(id: string, signal?: string): void;
   on(event: 'data', listener: (e: PtyDataEvent) => void): unknown;
   on(event: 'exit', listener: (e: PtyExitEvent) => void): unknown;
@@ -45,10 +48,16 @@ export interface SpawnSessionResult {
   ptyId: string;
 }
 
+interface SessionDataEvent {
+  sessionId: string;
+  data: string;
+}
+
 interface SessionRegistryEvents {
   add: [Session];
   update: [Session];
   remove: [{ id: string }];
+  data: [SessionDataEvent];
 }
 
 export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
@@ -56,6 +65,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
   private readonly adapterControllers = new Map<string, AbortController>();
   private readonly ptyToSession = new Map<string, string>();
   private readonly onPtyExit: (e: PtyExitEvent) => void;
+  private readonly onPtyData: (e: PtyDataEvent) => void;
 
   constructor(
     private readonly pty: PtyHandle,
@@ -63,7 +73,9 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
   ) {
     super();
     this.onPtyExit = (event) => this.handlePtyExit(event);
+    this.onPtyData = (event) => this.handlePtyData(event);
     this.pty.on('exit', this.onPtyExit);
+    this.pty.on('data', this.onPtyData);
   }
 
   list(): Session[] {
@@ -101,6 +113,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       cwd: request.cwd,
       cols: request.cols,
       rows: request.rows,
+      env: sanitizeSpawnEnv(process.env),
     });
 
     const sessionId = randomUUID();
@@ -136,6 +149,25 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     if (ptyId) this.pty.kill(ptyId, signal);
   }
 
+  /** Defer to the per-CLI adapter for "what can I resume in this cwd?". */
+  listResumable(cli: CliKind, cwd: string) {
+    return this.adapters[cli].listResumable(cwd);
+  }
+
+  /** Forward user keystrokes (or pasted text) to the session's PTY. */
+  write(sessionId: string, data: string): void {
+    const ptyId = this.ptyIdFor(sessionId);
+    if (!ptyId) return;
+    this.pty.write(ptyId, data);
+  }
+
+  /** Resize the session's PTY (rows × cols). */
+  resize(sessionId: string, cols: number, rows: number): void {
+    const ptyId = this.ptyIdFor(sessionId);
+    if (!ptyId) return;
+    this.pty.resize(ptyId, cols, rows);
+  }
+
   /** Stop watching + remove the record without killing the PTY. */
   forget(sessionId: string): void {
     if (!this.sessions.has(sessionId)) return;
@@ -153,6 +185,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     this.ptyToSession.clear();
     this.sessions.clear();
     this.pty.off('exit', this.onPtyExit);
+    this.pty.off('data', this.onPtyData);
     this.pty.disposeAll();
   }
 
@@ -200,6 +233,12 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     };
     this.sessions.set(sessionId, next);
     this.emit('update', next);
+  }
+
+  private handlePtyData({ id: ptyId, data }: PtyDataEvent): void {
+    const sessionId = this.ptyToSession.get(ptyId);
+    if (!sessionId) return;
+    this.emit('data', { sessionId, data });
   }
 
   private handlePtyExit({ id: ptyId, exitCode }: PtyExitEvent): void {

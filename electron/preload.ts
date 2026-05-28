@@ -5,9 +5,10 @@ import {
   type PtyDataEvent,
   type PtyExitEvent,
   type PtySpawnOptions,
+  type SessionDataPushPayload,
   type SessionSpawnRequest,
 } from '../shared/ipc-contracts';
-import type { Session } from '../shared/session-types';
+import type { ResumableSession, Session } from '../shared/session-types';
 
 const ptyApi = {
   spawn: (opts: PtySpawnOptions): Promise<string> =>
@@ -48,8 +49,16 @@ const sessionApi = {
   kill: (id: string, signal?: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.sessionKill, id, signal),
   forget: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.sessionForget, id),
+  write: (id: string, data: string): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.sessionWrite, id, data),
+  resize: (id: string, cols: number, rows: number): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.sessionResize, id, cols, rows),
+  listResumable: (cli: CliKind, cwd: string): Promise<ResumableSession[]> =>
+    ipcRenderer.invoke(IpcChannels.sessionListResumable, cli, cwd),
   resolveCliPath: (name: CliKind | string): Promise<string | null> =>
     ipcRenderer.invoke(IpcChannels.cliResolvePath, name),
+  pickDirectory: (opts?: { defaultPath?: string }): Promise<string | null> =>
+    ipcRenderer.invoke(IpcChannels.dialogPickDirectory, opts),
 
   onAdd(callback: (session: Session) => void): () => void {
     const h = (_e: unknown, s: Session): void => callback(s);
@@ -72,6 +81,13 @@ const sessionApi = {
       ipcRenderer.off(IpcChannels.sessionRemove, h);
     };
   },
+  onData(callback: (payload: SessionDataPushPayload) => void): () => void {
+    const h = (_e: unknown, p: SessionDataPushPayload): void => callback(p);
+    ipcRenderer.on(IpcChannels.sessionData, h);
+    return () => {
+      ipcRenderer.off(IpcChannels.sessionData, h);
+    };
+  },
 };
 
 const envApi = {
@@ -80,7 +96,7 @@ const envApi = {
 };
 
 contextBridge.exposeInMainWorld('agentDashboard', {
-  version: '0.1.0-m4',
+  version: '0.1.0-m5',
   pty: ptyApi,
   sessions: sessionApi,
   env: envApi,

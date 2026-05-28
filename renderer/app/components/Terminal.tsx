@@ -11,12 +11,21 @@ interface TerminalProps {
   sessionId: string;
 }
 
+/**
+ * xterm.js wrapper bound to a SessionRegistry session.
+ *
+ * Mounted once per session (kept alive while the session exists, even when
+ * not visible) so PTY scrollback accumulates and is preserved when the user
+ * tabs away and comes back. The parent applies display:none/flex to switch
+ * which terminal is on screen; we refit on visibility change via
+ * ResizeObserver.
+ */
 export function Terminal({ sessionId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const container = containerRef.current;
-    const api = window.agentDashboard?.pty;
+    const api = window.agentDashboard?.sessions;
     if (!container || !api) return;
 
     const term = new XTerm({
@@ -44,8 +53,21 @@ export function Terminal({ sessionId }: TerminalProps) {
     term.unicode.activeVersion = '11';
 
     term.open(container);
-    fit.fit();
-    void api.resize(sessionId, term.cols, term.rows);
+
+    // Only call fit when the container has real dimensions (i.e. it's
+    // visible). Calling fit on a hidden container crashes xterm.
+    const safeFit = (): void => {
+      if (container.clientWidth === 0 || container.clientHeight === 0) return;
+      try {
+        fit.fit();
+        void api.resize(sessionId, term.cols, term.rows);
+      } catch {
+        // xterm sometimes throws on transient layout edge cases — ignore
+      }
+    };
+
+    // First fit attempt — may noop if still hidden
+    safeFit();
     term.focus();
 
     const dataSub = term.onData((data) => {
@@ -53,33 +75,23 @@ export function Terminal({ sessionId }: TerminalProps) {
     });
 
     const offData = api.onData((event) => {
-      if (event.id === sessionId) term.write(event.data);
+      if (event.sessionId === sessionId) term.write(event.data);
     });
 
-    const offExit = api.onExit((event) => {
-      if (event.id === sessionId) {
-        term.write(`\r\n\x1b[33m[process exited with code ${event.exitCode}]\x1b[0m\r\n`);
-      }
-    });
+    const handleResize = (): void => safeFit();
+    window.addEventListener('resize', handleResize);
 
-    const handleWindowResize = (): void => {
-      fit.fit();
-      void api.resize(sessionId, term.cols, term.rows);
-    };
-    window.addEventListener('resize', handleWindowResize);
-
-    const resizeObserver = new ResizeObserver(handleWindowResize);
+    const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
 
     return () => {
-      window.removeEventListener('resize', handleWindowResize);
+      window.removeEventListener('resize', handleResize);
       resizeObserver.disconnect();
       dataSub.dispose();
       offData();
-      offExit();
       term.dispose();
     };
   }, [sessionId]);
 
-  return <div ref={containerRef} className="terminal-mount" />;
+  return <div ref={containerRef} className="h-full w-full" />;
 }

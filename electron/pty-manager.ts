@@ -24,12 +24,17 @@ export class PtyManager extends EventEmitter<PtyManagerEvents> {
 
   spawn(opts: PtySpawnOptions): string {
     const id = randomUUID();
+    // When `env` is provided we treat it as authoritative — callers
+    // (SessionRegistry) are expected to construct a clean env via
+    // env-sanitizer rather than relying on process.env passthrough,
+    // which leaks Claude Code / Codex Desktop "I wrap you" env vars
+    // into spawned CLIs.
     const proc = pty.spawn(opts.shell, opts.args, {
       name: 'xterm-256color',
       cols: opts.cols,
       rows: opts.rows,
       cwd: opts.cwd,
-      env: { ...(process.env as Record<string, string>), ...(opts.env ?? {}) },
+      env: opts.env ?? (process.env as Record<string, string>),
     });
 
     proc.onData((data) => this.emit('data', { id, data }));

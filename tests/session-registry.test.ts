@@ -18,6 +18,8 @@ interface PtyEvents {
 
 class FakePtyManager extends EventEmitter<PtyEvents> implements PtyHandle {
   spawned: Array<{ id: string; opts: unknown }> = [];
+  writes: Array<{ id: string; data: string }> = [];
+  resizes: Array<{ id: string; cols: number; rows: number }> = [];
   killed: string[] = [];
   disposed = false;
   private counter = 0;
@@ -27,11 +29,20 @@ class FakePtyManager extends EventEmitter<PtyEvents> implements PtyHandle {
     this.spawned.push({ id, opts });
     return id;
   }
+  write(id: string, data: string): void {
+    this.writes.push({ id, data });
+  }
+  resize(id: string, cols: number, rows: number): void {
+    this.resizes.push({ id, cols, rows });
+  }
   kill(id: string): void {
     this.killed.push(id);
   }
   disposeAll(): void {
     this.disposed = true;
+  }
+  emitData(id: string, data: string): void {
+    this.emit('data', { id, data });
   }
   emitExit(id: string, exitCode = 0): void {
     this.emit('exit', { id, exitCode, signal: null });
@@ -200,6 +211,47 @@ describe('SessionRegistry adapter watch integration', () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(reg.get(session.id)?.status).toBe('errored');
+  });
+});
+
+describe('SessionRegistry.write / resize / data', () => {
+  it('write routes to the correct PTY', () => {
+    const { reg, pty } = makeRegistry();
+    const { session, ptyId } = reg.spawn({ cli: 'claude', ...baseSpawn });
+    reg.write(session.id, 'hello\n');
+    expect(pty.writes).toEqual([{ id: ptyId, data: 'hello\n' }]);
+  });
+
+  it('resize routes to the correct PTY', () => {
+    const { reg, pty } = makeRegistry();
+    const { session, ptyId } = reg.spawn({ cli: 'claude', ...baseSpawn });
+    reg.resize(session.id, 100, 40);
+    expect(pty.resizes).toEqual([{ id: ptyId, cols: 100, rows: 40 }]);
+  });
+
+  it('write/resize for unknown session id is a no-op', () => {
+    const { reg, pty } = makeRegistry();
+    reg.write('does-not-exist', 'hi');
+    reg.resize('does-not-exist', 1, 1);
+    expect(pty.writes).toEqual([]);
+    expect(pty.resizes).toEqual([]);
+  });
+
+  it('emits data with sessionId when underlying PTY emits data', () => {
+    const { reg, pty } = makeRegistry();
+    const { session, ptyId } = reg.spawn({ cli: 'claude', ...baseSpawn });
+    const received: Array<{ sessionId: string; data: string }> = [];
+    reg.on('data', (e) => received.push(e));
+    pty.emitData(ptyId, 'hello from PTY');
+    expect(received).toEqual([{ sessionId: session.id, data: 'hello from PTY' }]);
+  });
+
+  it('drops data events for PTYs not mapped to any session', () => {
+    const { reg, pty } = makeRegistry();
+    const received: Array<{ sessionId: string; data: string }> = [];
+    reg.on('data', (e) => received.push(e));
+    pty.emitData('pty-orphan', 'noise');
+    expect(received).toEqual([]);
   });
 });
 

@@ -38,13 +38,23 @@ export const IpcChannels = {
   sessionSpawn: 'session:spawn',
   sessionKill: 'session:kill',
   sessionForget: 'session:forget',
+  sessionWrite: 'session:write',
+  sessionResize: 'session:resize',
+  sessionListResumable: 'session:list-resumable',
   cliResolvePath: 'cli:resolve-path',
+  dialogPickDirectory: 'dialog:pick-directory',
 
   // Push channels — main → renderer.
   sessionAdd: 'session:add',
   sessionUpdate: 'session:update',
   sessionRemove: 'session:remove',
+  sessionData: 'session:data',
 } as const;
+
+export interface SessionDataPushPayload {
+  sessionId: string;
+  data: string;
+}
 
 export interface SessionSpawnRequest {
   cli: CliKind;

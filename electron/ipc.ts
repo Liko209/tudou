@@ -1,7 +1,9 @@
-import { ipcMain, type BrowserWindow } from 'electron';
+import { dialog, ipcMain, type BrowserWindow } from 'electron';
 import {
   IpcChannels,
+  type CliKind,
   type PtySpawnOptions,
+  type SessionDataPushPayload,
   type SessionSpawnRequest,
 } from '../shared/ipc-contracts';
 import type { PtyManager } from './pty-manager';
@@ -89,7 +91,29 @@ export function registerSessionIpc(
     registry.forget(id);
   });
 
+  ipcMain.handle(IpcChannels.sessionWrite, (_e, id: string, data: string) => {
+    registry.write(id, data);
+  });
+
+  ipcMain.handle(IpcChannels.sessionResize, (_e, id: string, cols: number, rows: number) => {
+    registry.resize(id, cols, rows);
+  });
+
+  ipcMain.handle(
+    IpcChannels.sessionListResumable,
+    async (_e, cli: CliKind, cwd: string) => registry.listResumable(cli, cwd),
+  );
+
   ipcMain.handle(IpcChannels.cliResolvePath, (_e, name: string) => resolveCliPath(name));
+
+  ipcMain.handle(IpcChannels.dialogPickDirectory, async (_e, opts?: { defaultPath?: string }) => {
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Choose working directory',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: opts?.defaultPath,
+    });
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+  });
 
   const onAdd = (s: Session): void => {
     if (window.isDestroyed()) return;
@@ -103,14 +127,20 @@ export function registerSessionIpc(
     if (window.isDestroyed()) return;
     window.webContents.send(IpcChannels.sessionRemove, payload);
   };
+  const onData = (payload: SessionDataPushPayload): void => {
+    if (window.isDestroyed()) return;
+    window.webContents.send(IpcChannels.sessionData, payload);
+  };
 
   registry.on('add', onAdd);
   registry.on('update', onUpdate);
   registry.on('remove', onRemove);
+  registry.on('data', onData);
 
   window.on('closed', () => {
     registry.off('add', onAdd);
     registry.off('update', onUpdate);
     registry.off('remove', onRemove);
+    registry.off('data', onData);
   });
 }

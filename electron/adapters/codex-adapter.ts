@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
-import { mkdir, open, readdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import chokidar from 'chokidar';
 import { tailJsonl } from './jsonl-tail';
 import { estimateCost } from './cost-calculator';
@@ -61,7 +62,14 @@ export class CodexAdapter implements CliAdapter {
     }
     if (signal?.aborted) return null;
 
-    await mkdir(sessionsDir, { recursive: true });
+    // Pre-create today's date dir(s) so fsevents has a known target.
+    // chokidar's macOS fsevents backend cannot reliably report new files
+    // inside a directory that didn't exist when the watcher attached;
+    // pre-creating sidesteps that. mkdir is idempotent — codex won't
+    // notice (it does the same mkdir itself when it writes its rollout).
+    for (const d of dateDirCandidates(sessionsDir, new Date())) {
+      await mkdir(d, { recursive: true });
+    }
 
     return new Promise<string | null>((resolve) => {
       if (signal?.aborted) return resolve(null);
@@ -69,7 +77,6 @@ export class CodexAdapter implements CliAdapter {
       const watcher = chokidar.watch(sessionsDir, {
         ignoreInitial: true,
         awaitWriteFinish: false,
-        // recursive — codex writes to sessions/YYYY/MM/DD/rollout-*.jsonl
       });
 
       let settled = false;
@@ -91,16 +98,18 @@ export class CodexAdapter implements CliAdapter {
           if (settled) return;
           try {
             const st = await stat(path);
+            console.log('[codex-locate] stat mtimeMs', st.mtimeMs, 'sinceMs', sinceMs, 'ok?', st.mtimeMs >= sinceMs);
             if (st.mtimeMs < sinceMs) return;
             const meta = await readSessionMeta(path);
+            console.log('[codex-locate] meta', meta, 'expecting cwd', cwd);
             if (meta) {
               if (meta.cwd === cwd) {
                 finish(path);
               }
-              return; // wrong cwd — keep listening for other adds
+              return;
             }
-          } catch {
-            /* file vanished or unreadable */
+          } catch (err) {
+            console.log('[codex-locate] read err', err);
           }
           await new Promise((r) => setTimeout(r, 80));
         }
@@ -353,20 +362,31 @@ function extractCodexToolDescription(args: unknown): string {
 }
 
 async function readSessionMeta(file: string): Promise<{ id: string; cwd: string } | null> {
-  let fh;
+  // Stream-read until first \n. Codex's session_meta line bundles the
+  // full base_instructions system prompt, which routinely exceeds 20KB —
+  // a fixed-size read buffer can't keep up. Cap at 1MB as a sanity guard.
+  const MAX_LINE = 1024 * 1024;
+  let firstLine = '';
   try {
-    fh = await open(file, 'r');
+    const stream = createReadStream(file, { encoding: 'utf8', highWaterMark: 16384 });
+    for await (const chunk of stream) {
+      firstLine += chunk;
+      const nl = firstLine.indexOf('\n');
+      if (nl >= 0) {
+        firstLine = firstLine.slice(0, nl);
+        stream.destroy();
+        break;
+      }
+      if (firstLine.length > MAX_LINE) {
+        stream.destroy();
+        return null;
+      }
+    }
   } catch {
     return null;
   }
+  if (!firstLine) return null;
   try {
-    // Read first 16KB — session_meta is always the first line, well under that
-    const buf = Buffer.alloc(16 * 1024);
-    const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
-    const head = buf.slice(0, bytesRead).toString('utf8');
-    const newlineIdx = head.indexOf('\n');
-    if (newlineIdx < 0) return null;
-    const firstLine = head.slice(0, newlineIdx);
     const parsed = JSON.parse(firstLine);
     if (!isRecord(parsed) || parsed.type !== 'session_meta') return null;
     const payload = isRecord(parsed.payload) ? parsed.payload : null;
@@ -376,8 +396,6 @@ async function readSessionMeta(file: string): Promise<{ id: string; cwd: string 
     return { id: payload.id, cwd: payload.cwd };
   } catch {
     return null;
-  } finally {
-    await fh.close();
   }
 }
 
@@ -421,6 +439,29 @@ async function findRolloutById(codexHome: string, id: string): Promise<string | 
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * Today's `YYYY/MM/DD` subdirectory under sessionsDir, both in UTC and in
+ * local time. Deduplicated — for most timezones they're the same; near
+ * midnight UTC they differ and we return both so we cover whichever date
+ * codex chooses.
+ */
+function dateDirCandidates(sessionsDir: string, now: Date): string[] {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const utc = join(
+    sessionsDir,
+    String(now.getUTCFullYear()),
+    pad(now.getUTCMonth() + 1),
+    pad(now.getUTCDate()),
+  );
+  const local = join(
+    sessionsDir,
+    String(now.getFullYear()),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+  );
+  return utc === local ? [utc] : [utc, local];
 }
 
 async function searchTreeForId(dir: string, id: string): Promise<string | null> {
