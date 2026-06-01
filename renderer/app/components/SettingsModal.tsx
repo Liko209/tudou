@@ -13,6 +13,15 @@ interface HookStatus {
   fullyInstalled: boolean;
 }
 
+type SettingsTab = 'general' | 'notifications' | 'integrations' | 'updates' | 'data';
+const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
+  { key: 'general', label: 'General' },
+  { key: 'notifications', label: 'Notifications' },
+  { key: 'integrations', label: 'CLI & Hooks' },
+  { key: 'updates', label: 'Updates' },
+  { key: 'data', label: 'Data' },
+];
+
 interface Preferences {
   notifications: {
     systemNotification: boolean;
@@ -44,6 +53,7 @@ export function SettingsModal() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [hookStatus, setHookStatus] = useState<HookStatus | null>(null);
   const [hookBusy, setHookBusy] = useState(false);
+  const [tab, setTab] = useState<SettingsTab>('general');
 
   useEffect(() => {
     if (!open) return;
@@ -97,161 +107,195 @@ export function SettingsModal() {
   }
 
   return (
-    <Modal open={open} onClose={() => setOpen(false)} title="Settings" maxWidth="max-w-2xl">
-      <div className="flex flex-col gap-6">
-        <Section title="Appearance">
-          <div className="grid grid-cols-3 gap-1.5">
-            {(['dark', 'light', 'system'] as ThemeChoice[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTheme(t)}
-                className={cn(
-                  'rounded-md border px-3 py-2 text-sm capitalize',
-                  theme === t
-                    ? 'border-accent/60 bg-accent/10 text-ink'
-                    : 'border-edge/10 bg-sunken text-muted hover:border-edge/30',
-                )}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-        </Section>
-
-        <Section title="Notifications">
-          <CheckRow
-            checked={prefs.notifications.systemNotification}
-            onToggle={(v) =>
-              void save({
-                ...prefs,
-                notifications: { ...prefs.notifications, systemNotification: v },
-              })
-            }
-            label="System notification"
-          />
-          <CheckRow
-            checked={prefs.notifications.dockBadge}
-            onToggle={(v) =>
-              void save({ ...prefs, notifications: { ...prefs.notifications, dockBadge: v } })
-            }
-            label="Dock badge"
-          />
-          <CheckRow
-            checked={prefs.notifications.tray}
-            onToggle={(v) =>
-              void save({ ...prefs, notifications: { ...prefs.notifications, tray: v } })
-            }
-            label="Menubar badge"
-          />
-          <CheckRow
-            checked={prefs.notifications.sound}
-            onToggle={(v) =>
-              void save({ ...prefs, notifications: { ...prefs.notifications, sound: v } })
-            }
-            label="Sound when in background"
-          />
-        </Section>
-
-        <Section title="Quiet hours">
-          <CheckRow
-            checked={prefs.quietHours.enabled}
-            onToggle={(v) =>
-              void save({ ...prefs, quietHours: { ...prefs.quietHours, enabled: v } })
-            }
-            label="Mute notifications during a daily window"
-          />
-          <div className="flex items-center gap-2 pl-6 text-xs text-muted">
-            <TimeInput
-              value={prefs.quietHours.start}
-              disabled={!prefs.quietHours.enabled}
-              onChange={(v) =>
-                void save({ ...prefs, quietHours: { ...prefs.quietHours, start: v } })
-              }
-            />
-            <span>→</span>
-            <TimeInput
-              value={prefs.quietHours.end}
-              disabled={!prefs.quietHours.enabled}
-              onChange={(v) => void save({ ...prefs, quietHours: { ...prefs.quietHours, end: v } })}
-            />
-          </div>
-        </Section>
-
-        <Section title="CLI paths">
-          <p className="text-xs text-muted">Leave blank to auto-detect.</p>
-          <PathRow
-            label="claude"
-            value={prefs.cliPaths.claude ?? ''}
-            onChange={(v) =>
-              void save({
-                ...prefs,
-                cliPaths: { ...prefs.cliPaths, claude: v.trim() || null },
-              })
-            }
-          />
-          <PathRow
-            label="codex"
-            value={prefs.cliPaths.codex ?? ''}
-            onChange={(v) =>
-              void save({
-                ...prefs,
-                cliPaths: { ...prefs.cliPaths, codex: v.trim() || null },
-              })
-            }
-          />
-        </Section>
-
-        <Section title="Hook" aside={<HookBadge status={hookStatus} />}>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="default"
-              disabled={hookBusy}
-              onClick={() => void reinstallHook()}
+    <Modal open={open} onClose={() => setOpen(false)} title="Settings" maxWidth="max-w-3xl">
+      <div className="flex gap-5">
+        <nav className="flex w-40 shrink-0 flex-col gap-0.5">
+          {SETTINGS_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-left text-sm',
+                tab === t.key ? 'bg-accent/10 text-ink' : 'text-muted hover:bg-surface/60',
+              )}
             >
-              {hookBusy
-                ? 'Installing…'
-                : hookStatus?.fullyInstalled
-                  ? 'Reinstall / update hook'
-                  : 'Install hook'}
-            </Button>
-            <Button
-              size="sm"
-              variant="default"
-              onClick={() => {
-                setOpen(false);
-                openHookModal(true);
-              }}
-            >
-              Open hook setup…
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        <div className="flex min-h-[360px] min-w-0 flex-1 flex-col gap-6">
+          {tab === 'general' && (
+            <Section title="Appearance">
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['dark', 'light', 'system'] as ThemeChoice[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTheme(t)}
+                    className={cn(
+                      'rounded-md border px-3 py-2 text-sm capitalize',
+                      theme === t
+                        ? 'border-accent/60 bg-accent/10 text-ink'
+                        : 'border-edge/10 bg-sunken text-muted hover:border-edge/30',
+                    )}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {tab === 'notifications' && (
+            <>
+              <Section title="Notifications">
+                <CheckRow
+                  checked={prefs.notifications.systemNotification}
+                  onToggle={(v) =>
+                    void save({
+                      ...prefs,
+                      notifications: { ...prefs.notifications, systemNotification: v },
+                    })
+                  }
+                  label="System notification"
+                />
+                <CheckRow
+                  checked={prefs.notifications.dockBadge}
+                  onToggle={(v) =>
+                    void save({ ...prefs, notifications: { ...prefs.notifications, dockBadge: v } })
+                  }
+                  label="Dock badge"
+                />
+                <CheckRow
+                  checked={prefs.notifications.tray}
+                  onToggle={(v) =>
+                    void save({ ...prefs, notifications: { ...prefs.notifications, tray: v } })
+                  }
+                  label="Menubar badge"
+                />
+                <CheckRow
+                  checked={prefs.notifications.sound}
+                  onToggle={(v) =>
+                    void save({ ...prefs, notifications: { ...prefs.notifications, sound: v } })
+                  }
+                  label="Sound when in background"
+                />
+              </Section>
+
+              <Section title="Quiet hours">
+                <CheckRow
+                  checked={prefs.quietHours.enabled}
+                  onToggle={(v) =>
+                    void save({ ...prefs, quietHours: { ...prefs.quietHours, enabled: v } })
+                  }
+                  label="Mute notifications during a daily window"
+                />
+                <div className="flex items-center gap-2 pl-6 text-xs text-muted">
+                  <TimeInput
+                    value={prefs.quietHours.start}
+                    disabled={!prefs.quietHours.enabled}
+                    onChange={(v) =>
+                      void save({ ...prefs, quietHours: { ...prefs.quietHours, start: v } })
+                    }
+                  />
+                  <span>→</span>
+                  <TimeInput
+                    value={prefs.quietHours.end}
+                    disabled={!prefs.quietHours.enabled}
+                    onChange={(v) =>
+                      void save({ ...prefs, quietHours: { ...prefs.quietHours, end: v } })
+                    }
+                  />
+                </div>
+              </Section>
+            </>
+          )}
+
+          {tab === 'integrations' && (
+            <>
+              <Section title="CLI paths">
+                <p className="text-xs text-muted">Leave blank to auto-detect.</p>
+                <PathRow
+                  label="claude"
+                  value={prefs.cliPaths.claude ?? ''}
+                  onChange={(v) =>
+                    void save({
+                      ...prefs,
+                      cliPaths: { ...prefs.cliPaths, claude: v.trim() || null },
+                    })
+                  }
+                />
+                <PathRow
+                  label="codex"
+                  value={prefs.cliPaths.codex ?? ''}
+                  onChange={(v) =>
+                    void save({
+                      ...prefs,
+                      cliPaths: { ...prefs.cliPaths, codex: v.trim() || null },
+                    })
+                  }
+                />
+              </Section>
+
+              <Section title="Hook" aside={<HookBadge status={hookStatus} />}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    disabled={hookBusy}
+                    onClick={() => void reinstallHook()}
+                  >
+                    {hookBusy
+                      ? 'Installing…'
+                      : hookStatus?.fullyInstalled
+                        ? 'Reinstall / update hook'
+                        : 'Install hook'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => {
+                      setOpen(false);
+                      openHookModal(true);
+                    }}
+                  >
+                    Open hook setup…
+                  </Button>
+                </div>
+                <p className="mt-1.5 text-xs text-subtle">
+                  Lets Claude push turn-end / needs-input events to the dashboard for accurate
+                  status and notifications. Reinstall after a Claude update or if status looks
+                  stuck.
+                </p>
+              </Section>
+            </>
+          )}
+
+          {tab === 'updates' && (
+            <Section title="Updates">
+              <UpdatesSection />
+            </Section>
+          )}
+
+          {tab === 'data' && (
+            <Section title="Data">
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="default" onClick={() => setConfirmReset(true)}>
+                  Reset preferences
+                </Button>
+                <Button size="sm" variant="danger" onClick={() => setConfirmClear(true)}>
+                  Clear session history
+                </Button>
+              </div>
+            </Section>
+          )}
+
+          <div className="mt-auto flex justify-end pt-2">
+            <Button size="md" variant="default" disabled={saving} onClick={() => setOpen(false)}>
+              Close
             </Button>
           </div>
-          <p className="mt-1.5 text-xs text-subtle">
-            Lets Claude push turn-end / needs-input events to the dashboard for accurate status and
-            notifications. Reinstall after a Claude update or if status looks stuck.
-          </p>
-        </Section>
-
-        <Section title="Updates">
-          <UpdatesSection />
-        </Section>
-
-        <Section title="Data">
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="default" onClick={() => setConfirmReset(true)}>
-              Reset preferences
-            </Button>
-            <Button size="sm" variant="danger" onClick={() => setConfirmClear(true)}>
-              Clear session history
-            </Button>
-          </div>
-        </Section>
-
-        <div className="flex justify-end">
-          <Button size="md" variant="default" disabled={saving} onClick={() => setOpen(false)}>
-            Close
-          </Button>
         </div>
       </div>
       <ConfirmDialog
@@ -296,17 +340,14 @@ function UpdatesSection() {
     return api.onState((s) => setSt(s as UpdaterState));
   }, [api]);
 
-  const run = useCallback(
-    async (fn: () => Promise<void>) => {
-      setBusy(true);
-      try {
-        await fn();
-      } finally {
-        setBusy(false);
-      }
-    },
-    [],
-  );
+  const run = useCallback(async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   if (!api) return <p className="text-xs text-subtle">Updates run in the packaged app.</p>;
 
@@ -327,7 +368,12 @@ function UpdatesSection() {
         {phase === 'available' && st && 'info' in st && (
           <>
             <span className="text-ink">Update available — v{st.info.version}</span>
-            <Button size="sm" variant="primary" disabled={busy} onClick={() => void run(() => api.download())}>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={busy}
+              onClick={() => void run(() => api.download())}
+            >
               Download
             </Button>
           </>
@@ -338,14 +384,24 @@ function UpdatesSection() {
         {phase === 'ready' && st && 'info' in st && (
           <>
             <span className="text-ink">v{st.info.version} ready</span>
-            <Button size="sm" variant="primary" disabled={busy} onClick={() => void run(() => api.install())}>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={busy}
+              onClick={() => void run(() => api.install())}
+            >
               Restart &amp; install
             </Button>
           </>
         )}
         {phase === 'error' && <span className="text-danger">Update failed</span>}
         {(phase === 'idle' || phase === 'up-to-date' || phase === 'error') && (
-          <Button size="sm" variant="default" disabled={busy} onClick={() => void run(() => api.check())}>
+          <Button
+            size="sm"
+            variant="default"
+            disabled={busy}
+            onClick={() => void run(() => api.check())}
+          >
             Check for updates
           </Button>
         )}
