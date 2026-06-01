@@ -349,7 +349,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     if (event === 'Stop') update.status = 'waiting';
     else if (event === 'Notification') update.status = 'blocked';
     else if (event === 'UserPromptSubmit') update.status = 'working';
-    this.applyUpdate(targetId, update);
+    this.applyUpdate(targetId, update, true);
 
     // These two hook events are the authoritative "notify now" signals —
     // emit a dedicated event so the lifecycle manager can notify on them
@@ -522,7 +522,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     }
   }
 
-  private applyUpdate(sessionId: string, update: SessionUpdate): void {
+  private applyUpdate(sessionId: string, update: SessionUpdate, fromHook = false): void {
     const current = this.sessions.get(sessionId);
     if (!current) return;
 
@@ -533,6 +533,14 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     const nextConfidence = hookActive
       ? 'high'
       : (update.statusConfidence ?? current.statusConfidence);
+
+    // Once the hook is wired, IT owns status: working (UserPromptSubmit) until
+    // waiting (Stop), so the dot breathes through the whole turn. The adapter's
+    // JSONL heuristic flips to 'waiting' on any text-only assistant message,
+    // which would otherwise drop the pulse mid-turn (esp. in text-heavy
+    // sessions). So drop adapter-sourced status changes for hook-active
+    // sessions — only the hook may move status then.
+    const applyStatus = update.status !== undefined && (fromHook || !hookActive);
 
     // Auto-seed a title from the first user prompt so sessions sharing a
     // project don't all read `<project> · HH:MM`. Only fires while title is
@@ -545,7 +553,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
 
     const next: Session = {
       ...current,
-      ...(update.status !== undefined ? { status: update.status } : {}),
+      ...(applyStatus ? { status: update.status } : {}),
       ...(update.cliSessionId !== undefined ? { cliSessionId: update.cliSessionId } : {}),
       ...(update.gitBranch !== undefined ? { gitBranch: update.gitBranch } : {}),
       ...(update.metrics !== undefined ? { metrics: update.metrics } : {}),

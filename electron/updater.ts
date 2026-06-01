@@ -43,6 +43,15 @@ let state: UpdaterState = { phase: 'idle', currentVersion: '' };
 let win: BrowserWindow | null = null;
 let downloadedFile: string | null = null;
 let wired = false;
+let installing = false;
+
+/** True once we've begun swapping in an update and are quitting to relaunch.
+ *  The lifecycle manager checks this so its Cmd+Q "you have live sessions"
+ *  confirm doesn't block the updater's app.quit() (which left the old app
+ *  running, so the swap script couldn't relaunch). */
+export function isInstalling(): boolean {
+  return installing;
+}
 
 function setState(next: UpdaterState): void {
   state = next;
@@ -189,5 +198,8 @@ rm -rf -- "$3" 2>/dev/null || true
     stdio: 'ignore',
   });
   child.unref();
+  // Signal the lifecycle manager to let this quit through unconfirmed, then
+  // quit so the detached script can swap the bundle and relaunch.
+  installing = true;
   setTimeout(() => app.quit(), 200);
 }

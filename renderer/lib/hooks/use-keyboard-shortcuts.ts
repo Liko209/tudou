@@ -9,19 +9,56 @@ import { useUIStore } from '../stores/ui-store';
 
 /**
  * Window-level keyboard shortcuts:
- *  - ⌘\         : toggle both sidebars
- *  - ⌘T         : open New Session modal
- *  - ⌘W         : kill the active session (with confirm)
- *  - ⌘1..⌘9     : switch to the Nth session in activity-sorted order
+ *  - ⌘B          : toggle the left sidebar
+ *  - ⌘⇧B         : toggle the right panel
+ *  - ⌘⌥B         : toggle the bottom panel
+ *  - ⌘\          : toggle the left sidebar (legacy)
+ *  - ⌘N          : new session in the current project (else generic New chat)
+ *  - ⌘⇧N         : New chat (generic)
+ *  - ⌘T          : open New Session modal
+ *  - ⌘W          : kill the active session (with confirm)
+ *  - ⌘1..⌘9      : switch to the Nth session in activity-sorted order
  *
  * Caught at window level with preventDefault to win over the embedded
- * xterm.js (which would otherwise pass the key into the CLI).
+ * xterm.js (which would otherwise pass the key into the CLI). Letter keys
+ * match on `e.code` so ⌘⌥B keeps working (Option rewrites `e.key`).
  */
 export function useKeyboardShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const meta = e.metaKey;
       if (!meta) return;
+
+      // ⌘B / ⌘⇧B / ⌘⌥B → toggle left / right / bottom panels.
+      if (e.code === 'KeyB') {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        if (e.altKey) ui.setBottomPanelOpen(!ui.bottomPanelOpen);
+        else if (e.shiftKey) ui.setRightPanelOpen(!ui.rightPanelOpen);
+        else ui.toggleLeft();
+        return;
+      }
+
+      // ⌘N → new session in the current project; ⌘⇧N → generic New chat.
+      if (e.code === 'KeyN') {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        if (e.shiftKey) {
+          ui.openNewSession();
+          return;
+        }
+        const { activeId, sessions } = useSessionsStore.getState();
+        const active = activeId ? sessions[activeId] : null;
+        const chatsBase = window.agentDashboard?.env.chatsBaseDir() ?? '';
+        // "In a project" = active session whose cwd isn't under the generic
+        // chats base dir. Prefill the modal with that project's cwd.
+        if (active && !(chatsBase && active.cwd.startsWith(chatsBase))) {
+          ui.openNewSession('project', active.cwd);
+        } else {
+          ui.openNewSession();
+        }
+        return;
+      }
 
       if (e.key === '\\') {
         e.preventDefault();

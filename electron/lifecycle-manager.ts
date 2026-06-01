@@ -13,6 +13,7 @@ import { IpcChannels } from '../shared/ipc-contracts';
 import type { SessionRegistry } from './session-registry';
 import type { PreferencesStore } from './preferences';
 import { TRAY_ICON_DATA_URL_1X, TRAY_ICON_DATA_URL_2X } from './tray-icon';
+import { isInstalling } from './updater';
 
 // With a real menubar icon present, idle = icon only (no text). Live state
 // appends a compact count beside the icon.
@@ -266,7 +267,9 @@ export class LifecycleManager {
   // ---- quit confirm ----
 
   private onBeforeQuit(e: Electron.Event): void {
-    if (this.quitConfirmed) return;
+    // An update install quits intentionally to relaunch — never block it with
+    // the "you have live sessions" confirm, or the swap script can't restart.
+    if (this.quitConfirmed || isInstalling()) return;
     const live = this.registry
       .list()
       .filter((s) => s.status === 'working' || needsAttention(s.status));
