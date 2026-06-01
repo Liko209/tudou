@@ -184,15 +184,18 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       env: sanitizeSpawnEnv(process.env, { theme: request.theme }),
     });
 
-    // Preserve a prior custom/auto title (and name) when resuming so a
-    // rename survives across dashboard restarts — otherwise the resumed
-    // session would revert to a fresh `<project> · HH:MM` name.
-    let carried: { displayName: string; title: string | null } | null = null;
+    // Preserve a prior session's identity when resuming: the custom/auto title
+    // and name (so a rename survives) AND the original creation time (so the
+    // sidebar — sorted by creation — keeps the session in place instead of
+    // jumping it to the top on every resume).
+    let carried: { displayName: string; title: string | null; startedAt: string } | null = null;
     if (this.persistence && request.spawnArgs?.resume) {
       const prior = this.persistence
         .list()
         .find((r) => r.cli === request.cli && r.cliSessionId === request.spawnArgs!.resume);
-      if (prior) carried = { displayName: prior.displayName, title: prior.title ?? null };
+      if (prior) {
+        carried = { displayName: prior.displayName, title: prior.title ?? null, startedAt: prior.startedAt };
+      }
     }
 
     const sessionId = randomUUID();
@@ -206,7 +209,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       title: carried?.title ?? null,
       status: 'starting',
       statusConfidence: 'low',
-      startedAt: startedAt.toISOString(),
+      startedAt: carried?.startedAt ?? startedAt.toISOString(),
       lastActivityAt: startedAt.toISOString(),
       metrics: freshMetrics(),
       latestMessage: null,

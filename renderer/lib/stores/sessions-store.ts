@@ -260,23 +260,29 @@ export function buildSidebarItems(
     }
   }
 
-  // Stable order by creation time (oldest first; new sessions append to the
-  // bottom). Deliberately NOT last-activity — sorting by activity reshuffled
-  // the list every time you clicked a session, which was disorienting.
-  const byCreated = (a: SidebarItem, b: SidebarItem): number =>
-    a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0;
-  const sortItems = (arr: SidebarItem[]): SidebarItem[] => arr.sort(byCreated);
+  // Newest-first by creation time. Stable on purpose: selecting (or resuming)
+  // a session never changes its startedAt, so the list doesn't reshuffle on
+  // click — manual drag-reorder is the only other intended reordering.
+  const byCreatedDesc = (a: SidebarItem, b: SidebarItem): number =>
+    a.startedAt > b.startedAt ? -1 : a.startedAt < b.startedAt ? 1 : 0;
+  const sortItems = (arr: SidebarItem[]): SidebarItem[] => arr.sort(byCreatedDesc);
+  // A project's stable rank = when it FIRST appeared (its oldest session).
+  const firstSeen = (arr: SidebarItem[]): string =>
+    arr.reduce((min, it) => (it.startedAt < min ? it.startedAt : min), arr[0]?.startedAt ?? '');
 
-  chats.sort(byCreated);
+  chats.sort(byCreatedDesc);
 
   return {
     projects: [...projects.entries()]
       .map(([cwd, arr]) => ({ cwd, items: sortItems(arr) }))
-      // Order projects by their oldest session's creation time, also stable.
+      // Newest project on top, ranked by first appearance. Creating a session
+      // inside an existing project changes its newest item but not its oldest,
+      // so the project keeps its position — only the session moves to the top
+      // of that project.
       .sort((a, b) => {
-        const aT = a.items[0]?.startedAt ?? '';
-        const bT = b.items[0]?.startedAt ?? '';
-        return aT < bT ? -1 : aT > bT ? 1 : 0;
+        const aT = firstSeen(a.items);
+        const bT = firstSeen(b.items);
+        return aT > bT ? -1 : aT < bT ? 1 : 0;
       }),
     chats,
   };
