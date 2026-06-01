@@ -44,6 +44,10 @@ export function Terminal({ sessionId }: TerminalProps) {
   // launcher button in the corner; ⌘E or the launcher opens it, ✕/Esc collapse
   // it. The draft survives collapsing (kept in the store, per session).
   const [composeOpen, setComposeOpen] = useState(false);
+  // Mirror open state in a ref so the window-level ⌘E handler (bound once)
+  // reads the live value instead of a stale closure.
+  const composeOpenRef = useRef(composeOpen);
+  composeOpenRef.current = composeOpen;
 
   const openCompose = useCallback(() => {
     setComposeOpen(true);
@@ -86,21 +90,21 @@ export function Terminal({ sessionId }: TerminalProps) {
     [insertDraft, collapseCompose],
   );
 
-  // ⌘E opens + focuses the compose box — only on the currently visible
-  // terminal (offsetParent is null when display:none). Capture phase so it
-  // wins over xterm's own key handling.
+  // ⌘E toggles the compose box (open+focus / collapse) — only on the currently
+  // visible terminal (offsetParent is null when display:none). Capture phase so
+  // it wins over xterm's own key handling.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent): void => {
       if (!e.metaKey || e.code !== 'KeyE') return;
       if (containerRef.current?.offsetParent == null) return;
       e.preventDefault();
       e.stopPropagation();
-      setComposeOpen(true);
-      requestAnimationFrame(() => composeRef.current?.focus());
+      if (composeOpenRef.current) collapseCompose();
+      else openCompose();
     };
     window.addEventListener('keydown', onKey, { capture: true });
     return () => window.removeEventListener('keydown', onKey, { capture: true });
-  }, []);
+  }, [openCompose, collapseCompose]);
 
   useEffect(() => {
     const container = containerRef.current;
