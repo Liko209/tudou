@@ -356,6 +356,31 @@ describe('SessionRegistry hook-driven attention', () => {
     expect(attention).toEqual([]);
     expect(reg.isHookActive(session.id)).toBe(true);
   });
+
+  it('hook-active: adapter may re-light the pulse (working) but cannot force waiting', async () => {
+    const { reg, claude } = makeRegistry();
+    const session = await spawnWithCliId(reg, claude, 'claude-w');
+
+    // Hook wires the session and ends the turn → waiting.
+    reg.applyHookEvent({ session_id: 'claude-w', hook_event_name: 'Stop' });
+    expect(reg.isHookActive(session.id)).toBe(true);
+    expect(reg.get(session.id)?.status).toBe('waiting');
+
+    // Adapter sees fresh JSONL activity → it MAY turn the pulse back on, even
+    // though the UserPromptSubmit hook was missed (self-heal).
+    claude.pending.push({ status: 'working' });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(reg.get(session.id)?.status).toBe('working');
+
+    // But the adapter's text-only 'waiting' must NOT drop the pulse mid-turn.
+    claude.pending.push({ status: 'waiting' });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(reg.get(session.id)?.status).toBe('working');
+
+    // Only the Stop hook ends the turn.
+    reg.applyHookEvent({ session_id: 'claude-w', hook_event_name: 'Stop' });
+    expect(reg.get(session.id)?.status).toBe('waiting');
+  });
 });
 
 describe('SessionRegistry.write / resize / data', () => {

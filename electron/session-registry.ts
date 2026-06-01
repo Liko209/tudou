@@ -534,13 +534,20 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       ? 'high'
       : (update.statusConfidence ?? current.statusConfidence);
 
-    // Once the hook is wired, IT owns status: working (UserPromptSubmit) until
-    // waiting (Stop), so the dot breathes through the whole turn. The adapter's
-    // JSONL heuristic flips to 'waiting' on any text-only assistant message,
-    // which would otherwise drop the pulse mid-turn (esp. in text-heavy
-    // sessions). So drop adapter-sourced status changes for hook-active
-    // sessions — only the hook may move status then.
-    const applyStatus = update.status !== undefined && (fromHook || !hookActive);
+    // Status authority for hook-active sessions is ASYMMETRIC:
+    //  - The hook is the source of truth for END of turn — only Stop moves a
+    //    hook-active session to 'waiting'. The adapter's JSONL heuristic flips
+    //    to 'waiting' on any text-only assistant message, which would drop the
+    //    pulse mid-turn; we suppress that.
+    //  - But the adapter MAY still turn the pulse ON ('working'): JSONL activity
+    //    reliably means the session is busy. This self-heals a missed
+    //    UserPromptSubmit hook (e.g. it raced ahead of cliSessionId capture, so
+    //    it matched no session and was dropped) — without it the session would
+    //    be stuck at 'waiting' for the whole turn while clearly working.
+    // Non-hook sessions: adapter owns status entirely, as before.
+    const applyStatus =
+      update.status !== undefined &&
+      (fromHook || !hookActive || update.status === 'working');
 
     // Auto-seed a title from the first user prompt so sessions sharing a
     // project don't all read `<project> · HH:MM`. Only fires while title is
