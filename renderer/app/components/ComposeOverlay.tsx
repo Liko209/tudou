@@ -88,7 +88,9 @@ export function ComposeOverlay({
   return (
     <div
       className={cn(
-        'pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-4',
+        // Spans the whole terminal pane (so the card can be dragged anywhere
+        // in it), but only the card itself is interactive.
+        'pointer-events-none absolute inset-0 z-10 flex items-end justify-center px-4 pb-4',
         'transition-[opacity,transform] duration-200 ease-out',
         visible ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
       )}
@@ -98,7 +100,7 @@ export function ComposeOverlay({
         ref={cardRef}
         style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
         className={cn(
-          'w-full max-w-2xl overflow-hidden rounded-xl border border-edge/15 bg-surface/95 shadow-xl backdrop-blur',
+          'w-full max-w-3xl overflow-hidden rounded-xl border border-edge/15 bg-surface/95 shadow-xl backdrop-blur',
           visible ? 'pointer-events-auto' : 'pointer-events-none',
         )}
       >
@@ -132,16 +134,16 @@ export function ComposeOverlay({
           placeholder="Jot your reply while you read…  ⌘↵ to insert into the input line"
           className="max-h-48 min-h-[3.5rem] w-full resize-none bg-transparent px-3 py-2 text-sm leading-relaxed text-ink placeholder:text-subtle focus:outline-none"
         />
-        <div className="flex items-center justify-between border-t border-edge/10 px-3 py-2">
-          <span className="text-[11px] text-subtle">
-            Inserts into the CLI input — review, then press Enter to send
+        <div className="flex items-center justify-between gap-3 border-t border-edge/10 px-3 py-2">
+          <span className="min-w-0 truncate text-[11px] text-subtle">
+            Inserts into the input — press Enter to send
           </span>
           <button
             type="button"
             onClick={onInsert}
             disabled={!canInsert}
             className={cn(
-              'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+              'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
               canInsert
                 ? 'bg-accent/15 text-ink hover:bg-accent/25'
                 : 'cursor-not-allowed text-subtle opacity-50',
