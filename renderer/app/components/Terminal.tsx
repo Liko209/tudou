@@ -5,6 +5,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { Loader2 } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 import { cn } from '../../lib/utils';
@@ -67,6 +68,17 @@ export function Terminal({ sessionId }: TerminalProps) {
     term.unicode.activeVersion = '11';
 
     term.open(container);
+    // GPU renderer — rasterizes each glyph into its cell, fixing the CJK
+    // glyph clipping/overlap the DOM renderer shows (esp. under selection).
+    // Falls back to the DOM renderer if WebGL is unavailable or its context
+    // is lost.
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch {
+      /* no WebGL — DOM renderer stays */
+    }
     attachMacKeyBindings(term, (data) => void api.write(sessionId, data));
 
     // Only fit when the container has real dimensions (i.e. it's visible);

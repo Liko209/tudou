@@ -5,6 +5,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
 import { useUIStore } from '../../lib/stores/ui-store';
 import { getXtermTheme } from '../../lib/xterm-theme';
@@ -78,6 +79,14 @@ export function ShellTerminal({ cwd }: ShellTerminalProps) {
         term.loadAddon(u11);
         term.unicode.activeVersion = '11';
         term.open(container);
+        // GPU renderer (fixes CJK clipping); DOM fallback if unavailable.
+        try {
+          const webgl = new WebglAddon();
+          webgl.onContextLoss(() => webgl.dispose());
+          term.loadAddon(webgl);
+        } catch {
+          /* no WebGL — DOM renderer stays */
+        }
         attachMacKeyBindings(term, (data) => {
           if (ptyId) void ptyApi.write(ptyId, data);
         });
