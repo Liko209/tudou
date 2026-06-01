@@ -49,6 +49,14 @@ function setState(next: UpdaterState): void {
   if (win && !win.isDestroyed()) win.webContents.send(IpcChannels.updateState, state);
 }
 
+// electron-updater errors stringify the whole HTTP response (headers + stack).
+// Keep just the first line, capped — enough to diagnose, won't blow up the UI.
+function errText(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  const firstLine = raw.split('\n')[0] ?? raw;
+  return firstLine.length > 200 ? `${firstLine.slice(0, 200)}…` : firstLine;
+}
+
 export function getUpdaterState(): UpdaterState {
   return state;
 }
@@ -97,7 +105,7 @@ export function initUpdater(window: BrowserWindow): void {
     const haveZip = !!downloadedFile && downloadedFile.endsWith('.zip');
     setState({ phase: 'ready', info: lite(info), canAutoInstall: QUIT_AND_INSTALL_AVAILABLE || haveZip });
   });
-  autoUpdater.on('error', (err) => setState({ phase: 'error', message: err?.message ?? String(err) }));
+  autoUpdater.on('error', (err) => setState({ phase: 'error', message: errText(err) }));
 
   // Quietly check shortly after launch.
   setTimeout(() => void checkForUpdates(), 3000);
@@ -111,7 +119,7 @@ export async function checkForUpdates(): Promise<void> {
   try {
     await autoUpdater.checkForUpdates();
   } catch (e) {
-    setState({ phase: 'error', message: (e as Error).message });
+    setState({ phase: 'error', message: errText(e) });
   }
 }
 
@@ -120,7 +128,7 @@ export async function downloadUpdate(): Promise<void> {
   try {
     await autoUpdater.downloadUpdate();
   } catch (e) {
-    setState({ phase: 'error', message: (e as Error).message });
+    setState({ phase: 'error', message: errText(e) });
   }
 }
 

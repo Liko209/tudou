@@ -343,9 +343,7 @@ function UpdatesSection() {
             </Button>
           </>
         )}
-        {phase === 'error' && st && 'message' in st && (
-          <span className="text-danger">Update error: {st.message}</span>
-        )}
+        {phase === 'error' && <span className="text-danger">Update failed</span>}
         {(phase === 'idle' || phase === 'up-to-date' || phase === 'error') && (
           <Button size="sm" variant="default" disabled={busy} onClick={() => void run(() => api.check())}>
             Check for updates
@@ -355,6 +353,11 @@ function UpdatesSection() {
       {phase === 'downloading' && st && 'percent' in st && (
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-edge/10">
           <div className="h-full rounded-full bg-accent" style={{ width: `${st.percent}%` }} />
+        </div>
+      )}
+      {phase === 'error' && st && 'message' in st && (
+        <div className="max-h-24 w-full overflow-auto whitespace-pre-wrap break-words rounded border border-danger/30 bg-danger/5 p-2 font-mono text-[11px] leading-snug text-danger">
+          {st.message}
         </div>
       )}
     </div>

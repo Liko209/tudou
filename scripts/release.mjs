@@ -90,15 +90,21 @@ run('npx electron-builder --mac --publish always', {
   env: { ...process.env, GH_TOKEN: token },
 });
 
-step('Writing release notes…');
+// electron-builder uploaded everything to a DRAFT release (releaseType: draft),
+// so no updater check could 404 on a half-uploaded release. Now that all assets
+// (incl. latest-mac.yml) are up, write the notes and flip it to a published
+// release in one shot — that's the moment it becomes the "latest" the updater
+// sees.
+step('Writing notes + publishing the release…');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const target = pkg.build?.publish?.[0];
 if (target?.owner && target?.repo) {
   const notesPath = join(tmpdir(), `tudou-relnotes-${version}.md`);
   writeFileSync(notesPath, buildReleaseNotes(version));
-  run(`gh release edit v${version} --repo ${target.owner}/${target.repo} --notes-file "${notesPath}"`, {
-    env: { ...process.env, GH_TOKEN: token },
-  });
+  run(
+    `gh release edit v${version} --repo ${target.owner}/${target.repo} --draft=false --notes-file "${notesPath}"`,
+    { env: { ...process.env, GH_TOKEN: token } },
+  );
 } else {
   console.warn('  (skipped — no build.publish owner/repo configured)');
 }
