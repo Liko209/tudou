@@ -35,7 +35,10 @@ function buildReleaseNotes(version) {
   const prevTag = tags.find((t) => t !== `v${version}`);
   const heading = prevTag ? `Changes since ${prevTag}` : 'Initial release';
   const changes = prevTag
-    ? capture(`git log ${prevTag}..HEAD --no-merges --pretty=format:- %s`) ||
+    ? // Quote the format — the "- %s" contains a space the shell would
+      // otherwise split, leaving %s parsed as a path (git: "use -- to
+      // separate paths from revisions") and the changelog empty.
+      capture(`git log ${prevTag}..HEAD --no-merges --pretty="format:- %s"`) ||
       '- (no commits since the last release)'
     : '- First published build.';
   return `## ${heading}
