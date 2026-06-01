@@ -10,13 +10,57 @@
 // Requires: the GitHub repo to exist (see build.publish in package.json) and
 // `gh` to be authenticated — we pull the token from `gh auth token`.
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const run = (cmd, opts = {}) => execSync(cmd, { stdio: 'inherit', cwd: root, ...opts });
+const capture = (cmd) => {
+  try {
+    return execSync(cmd, { cwd: root, encoding: 'utf8' }).trim();
+  } catch {
+    return '';
+  }
+};
 const step = (m) => console.log(`\n\x1b[36m▸ ${m}\x1b[0m`);
+
+// Bitrove-style notes: "Changes since <prevTag>" (git log) + macOS install help.
+function buildReleaseNotes(version) {
+  capture('git fetch --tags --quiet origin'); // pull tags electron-builder created
+  const tags = capture("git tag --list 'v*' --sort=-v:refname")
+    .split('\n')
+    .filter(Boolean);
+  const prevTag = tags.find((t) => t !== `v${version}`);
+  const heading = prevTag ? `Changes since ${prevTag}` : 'Initial release';
+  const changes = prevTag
+    ? capture(`git log ${prevTag}..HEAD --no-merges --pretty=format:- %s`) ||
+      '- (no commits since the last release)'
+    : '- First published build.';
+  return `## ${heading}
+
+${changes}
+
+---
+
+## Installing on macOS
+
+Tudou is currently unsigned, so macOS will block it unless you take one extra step:
+
+1. Download the DMG below — \`Tudou-${version}-arm64.dmg\` for Apple Silicon,
+   \`Tudou-${version}.dmg\` for Intel — open it, drag **Tudou** to Applications.
+2. In Terminal, run:
+   \`\`\`
+   xattr -cr /Applications/Tudou.app
+   \`\`\`
+3. Open Tudou. Future updates apply automatically from **Settings → Updates**.
+
+If you see "Tudou is damaged and can't be opened", you skipped step 2 — that's
+just macOS Gatekeeper's wording for any unsigned app from a browser. Run the
+\`xattr\` command and try again. Signing + notarization is on the roadmap.
+`;
+}
 
 const bump = process.argv[2] || 'patch'; // patch | minor | major | x.y.z
 
@@ -45,6 +89,19 @@ step('Packaging + publishing to GitHub Releases (mac arm64 + x64)…');
 run('npx electron-builder --mac --publish always', {
   env: { ...process.env, GH_TOKEN: token },
 });
+
+step('Writing release notes…');
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+const target = pkg.build?.publish?.[0];
+if (target?.owner && target?.repo) {
+  const notesPath = join(tmpdir(), `tudou-relnotes-${version}.md`);
+  writeFileSync(notesPath, buildReleaseNotes(version));
+  run(`gh release edit v${version} --repo ${target.owner}/${target.repo} --notes-file "${notesPath}"`, {
+    env: { ...process.env, GH_TOKEN: token },
+  });
+} else {
+  console.warn('  (skipped — no build.publish owner/repo configured)');
+}
 
 console.log(`\n\x1b[32m✓ Released v${version}. In-app updater will pick it up on next check.\x1b[0m`);
 console.log('  (Commit the package.json version bump when you’re ready.)');

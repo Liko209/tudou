@@ -277,7 +277,7 @@ export function SettingsModal() {
 }
 
 type UpdaterState =
-  | { phase: 'idle' }
+  | { phase: 'idle'; currentVersion: string }
   | { phase: 'checking' }
   | { phase: 'up-to-date'; currentVersion: string }
   | { phase: 'available'; info: { version: string } }
@@ -313,6 +313,9 @@ function UpdatesSection() {
   const phase = st?.phase ?? 'idle';
   return (
     <div className="flex flex-col gap-2">
+      {st && 'currentVersion' in st && st.currentVersion && (
+        <div className="font-mono text-xs text-subtle">Current version v{st.currentVersion}</div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
         {phase === 'checking' && <span>Checking for updates…</span>}
         {phase === 'up-to-date' && (

@@ -31,7 +31,7 @@ export interface UpdateInfoLite {
 }
 
 export type UpdaterState =
-  | { phase: 'idle' }
+  | { phase: 'idle'; currentVersion: string }
   | { phase: 'checking' }
   | { phase: 'up-to-date'; currentVersion: string }
   | { phase: 'available'; info: UpdateInfoLite }
@@ -39,7 +39,7 @@ export type UpdaterState =
   | { phase: 'ready'; info: UpdateInfoLite; canAutoInstall: boolean }
   | { phase: 'error'; message: string };
 
-let state: UpdaterState = { phase: 'idle' };
+let state: UpdaterState = { phase: 'idle', currentVersion: '' };
 let win: BrowserWindow | null = null;
 let downloadedFile: string | null = null;
 let wired = false;
@@ -72,6 +72,9 @@ function lite(info: UpdateInfo): UpdateInfoLite {
  */
 export function initUpdater(window: BrowserWindow): void {
   win = window;
+  // Surface the running version immediately so Settings → Updates can show it
+  // before any check (works in dev too, where we return early below).
+  if (state.phase === 'idle') setState({ phase: 'idle', currentVersion: app.getVersion() });
   if (!app.isPackaged || wired) return;
   wired = true;
 
