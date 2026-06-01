@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -12,6 +12,7 @@ import { cn } from '../../lib/utils';
 import { useUIStore } from '../../lib/stores/ui-store';
 import { getXtermTheme } from '../../lib/xterm-theme';
 import { attachMacKeyBindings } from '../../lib/xterm-mac-keybindings';
+import { ComposeOverlay } from './ComposeOverlay';
 
 interface TerminalProps {
   sessionId: string;
@@ -29,11 +30,67 @@ interface TerminalProps {
 export function Terminal({ sessionId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
+  const composeRef = useRef<HTMLTextAreaElement>(null);
   const theme = useUIStore((s) => s.theme);
+  const draft = useUIStore((s) => s.composeDrafts[sessionId] ?? '');
+  const setComposeDraft = useUIStore((s) => s.setComposeDraft);
   // Visible until first byte of scrollback OR live data arrives, so the
   // user sees a spinner instead of a blank canvas while a freshly
   // resumed Claude process boots up (often 200-800ms).
   const [loading, setLoading] = useState(true);
+  // Compose box: shown when the user scrolls up off the bottom (reading), and
+  // kept around while a draft is non-empty or it was summoned with ⌘E.
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const [forceCompose, setForceCompose] = useState(false);
+  const showCompose = awayFromBottom || forceCompose || draft.trim().length > 0;
+
+  // Paste the draft into the CLI's own input line (bracketed paste so multi-
+  // line text lands as one paste, not line-by-line submits), scroll to the
+  // bottom, hand focus back to the terminal, and clear the draft. No Enter —
+  // the user reviews in the real input and sends themselves.
+  const insertDraft = useCallback(() => {
+    const term = termRef.current;
+    const api = window.agentDashboard?.sessions;
+    const text = useUIStore.getState().composeDrafts[sessionId] ?? '';
+    if (!term || !api || !text.trim()) return;
+    const bracketed = term.modes?.bracketedPasteMode ?? false;
+    const payload = bracketed ? `\x1b[200~${text}\x1b[201~` : text;
+    void api.write(sessionId, payload);
+    term.scrollToBottom();
+    term.focus();
+    setComposeDraft(sessionId, '');
+    setForceCompose(false);
+  }, [sessionId, setComposeDraft]);
+
+  const handleComposeKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.metaKey && e.key === 'Enter') {
+        e.preventDefault();
+        insertDraft();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setForceCompose(false);
+        termRef.current?.focus();
+      }
+    },
+    [insertDraft],
+  );
+
+  // ⌘E summons + focuses the compose box, even at the bottom — only on the
+  // currently visible terminal (offsetParent is null when display:none).
+  // Capture phase so it wins over xterm's own key handling.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent): void => {
+      if (!e.metaKey || e.code !== 'KeyE') return;
+      if (containerRef.current?.offsetParent == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setForceCompose(true);
+      requestAnimationFrame(() => composeRef.current?.focus());
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -113,6 +170,16 @@ export function Terminal({ sessionId }: TerminalProps) {
       void api.write(sessionId, data);
     });
 
+    // Track whether the viewport is pinned to the bottom. When the user
+    // scrolls up to read, reveal the compose box; new output won't yank them
+    // down (xterm only auto-scrolls when already at the bottom). A few lines
+    // of slack so a 1-line trackpad bounce doesn't flicker the box.
+    const SCROLL_REVEAL_LINES = 3;
+    const onScroll = (ydisp: number): void => {
+      setAwayFromBottom(term.buffer.active.baseY - ydisp > SCROLL_REVEAL_LINES);
+    };
+    const scrollSub = term.onScroll(onScroll);
+
     // Restore scrollback after a renderer reload: main keeps the PTY
     // alive but our xterm starts blank. Write the saved buffer first,
     // THEN subscribe to the live stream — this trades a tiny window
@@ -187,6 +254,7 @@ export function Terminal({ sessionId }: TerminalProps) {
       window.removeEventListener('resize', handleResize);
       resizeObserver.disconnect();
       dataSub.dispose();
+      scrollSub.dispose();
       offData?.();
       termRef.current = null;
       term.dispose();
@@ -220,6 +288,19 @@ export function Terminal({ sessionId }: TerminalProps) {
       >
         <Loader2 className="h-5 w-5 animate-spin text-muted" strokeWidth={1.75} />
       </div>
+      <ComposeOverlay
+        visible={showCompose}
+        draft={draft}
+        onChange={(text) => setComposeDraft(sessionId, text)}
+        onInsert={insertDraft}
+        onClose={() => {
+          setComposeDraft(sessionId, '');
+          setForceCompose(false);
+          termRef.current?.focus();
+        }}
+        onKeyDown={handleComposeKeyDown}
+        textareaRef={composeRef}
+      />
     </div>
   );
 }

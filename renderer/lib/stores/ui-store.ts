@@ -60,6 +60,13 @@ interface UIState {
    * this map directly. Pruned when a session is removed (prunePanels).
    */
   panels: Record<string, SessionPanelState>;
+  /**
+   * Per-session compose drafts, keyed by session id. The floating compose box
+   * over each session terminal writes here so a half-written reply survives
+   * scrolling, hiding the box, and switching sessions. Cleared on insert and
+   * pruned with the session (prunePanels).
+   */
+  composeDrafts: Record<string, string>;
   /** Drag-resizable dimensions (px) — global, shared across sessions. */
   sidebarWidth: number;
   rightPanelWidth: number;
@@ -95,7 +102,9 @@ interface UIState {
   setBottomPanelOpen: (open: boolean) => void;
   setRightPanelKind: (kind: PanelKind | null) => void;
   setBottomPanelKind: (kind: PanelKind | null) => void;
-  /** Drop panel state for sessions no longer present (called by AppShell). */
+  setComposeDraft: (sessionId: string, text: string) => void;
+  /** Drop per-session UI state (panels + compose drafts) for sessions no
+   *  longer present (called by AppShell). */
   prunePanels: (validIds: string[]) => void;
   setSidebarWidth: (w: number) => void;
   setRightPanelWidth: (w: number) => void;
@@ -121,6 +130,7 @@ function patchActivePanel(
 export const useUIStore = create<UIState>((set, get) => ({
   leftCollapsed: false,
   panels: {},
+  composeDrafts: {},
   sidebarWidth: 240,
   rightPanelWidth: 360,
   bottomPanelHeight: 260,
@@ -156,14 +166,19 @@ export const useUIStore = create<UIState>((set, get) => ({
   // Opening into the picker keeps the panel open; picking a kind fills it.
   setRightPanelKind: (kind) => patchActivePanel(set, { rightKind: kind }),
   setBottomPanelKind: (kind) => patchActivePanel(set, { bottomKind: kind }),
+  setComposeDraft: (sessionId, text) =>
+    set((s) => ({ composeDrafts: { ...s.composeDrafts, [sessionId]: text } })),
   prunePanels: (validIds) => {
-    const { panels } = get();
+    const { panels, composeDrafts } = get();
     const valid = new Set(validIds);
-    const dead = Object.keys(panels).filter((id) => !valid.has(id));
-    if (dead.length === 0) return; // no change — don't churn subscribers
-    const next = { ...panels };
-    for (const id of dead) delete next[id];
-    set({ panels: next });
+    const deadPanels = Object.keys(panels).filter((id) => !valid.has(id));
+    const deadDrafts = Object.keys(composeDrafts).filter((id) => !valid.has(id));
+    if (deadPanels.length === 0 && deadDrafts.length === 0) return; // no change
+    const nextPanels = { ...panels };
+    for (const id of deadPanels) delete nextPanels[id];
+    const nextDrafts = { ...composeDrafts };
+    for (const id of deadDrafts) delete nextDrafts[id];
+    set({ panels: nextPanels, composeDrafts: nextDrafts });
   },
   setSidebarWidth: (w) => set({ sidebarWidth: clamp(w, 180, 400) }),
   setRightPanelWidth: (w) => set({ rightPanelWidth: clamp(w, 240, rightPanelMax()) }),
