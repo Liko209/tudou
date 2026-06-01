@@ -67,6 +67,11 @@ interface UIState {
    * pruned with the session (prunePanels).
    */
   composeDrafts: Record<string, string>;
+  /**
+   * Drag offset (px) of the compose box from its default bottom-center spot —
+   * global so dragging it once applies to every session's box. {0,0} = default.
+   */
+  composeOffset: { x: number; y: number };
   /** Drag-resizable dimensions (px) — global, shared across sessions. */
   sidebarWidth: number;
   rightPanelWidth: number;
@@ -103,6 +108,7 @@ interface UIState {
   setRightPanelKind: (kind: PanelKind | null) => void;
   setBottomPanelKind: (kind: PanelKind | null) => void;
   setComposeDraft: (sessionId: string, text: string) => void;
+  setComposeOffset: (pos: { x: number; y: number }) => void;
   /** Drop per-session UI state (panels + compose drafts) for sessions no
    *  longer present (called by AppShell). */
   prunePanels: (validIds: string[]) => void;
@@ -131,6 +137,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   leftCollapsed: false,
   panels: {},
   composeDrafts: {},
+  composeOffset: { x: 0, y: 0 },
   sidebarWidth: 240,
   rightPanelWidth: 360,
   bottomPanelHeight: 260,
@@ -168,6 +175,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   setBottomPanelKind: (kind) => patchActivePanel(set, { bottomKind: kind }),
   setComposeDraft: (sessionId, text) =>
     set((s) => ({ composeDrafts: { ...s.composeDrafts, [sessionId]: text } })),
+  setComposeOffset: (pos) => set({ composeOffset: pos }),
   prunePanels: (validIds) => {
     const { panels, composeDrafts } = get();
     const valid = new Set(validIds);

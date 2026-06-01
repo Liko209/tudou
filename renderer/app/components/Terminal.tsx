@@ -34,6 +34,8 @@ export function Terminal({ sessionId }: TerminalProps) {
   const theme = useUIStore((s) => s.theme);
   const draft = useUIStore((s) => s.composeDrafts[sessionId] ?? '');
   const setComposeDraft = useUIStore((s) => s.setComposeDraft);
+  const composeOffset = useUIStore((s) => s.composeOffset);
+  const setComposeOffset = useUIStore((s) => s.setComposeOffset);
   // Visible until first byte of scrollback OR live data arrives, so the
   // user sees a spinner instead of a blank canvas while a freshly
   // resumed Claude process boots up (often 200-800ms).
@@ -300,6 +302,8 @@ export function Terminal({ sessionId }: TerminalProps) {
         }}
         onKeyDown={handleComposeKeyDown}
         textareaRef={composeRef}
+        offset={composeOffset}
+        onOffsetChange={setComposeOffset}
       />
     </div>
   );
