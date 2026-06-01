@@ -26,7 +26,10 @@ export function getXtermTheme(): ITheme {
     foreground: v('ink'),
     cursor: v('accent'),
     cursorAccent: v('canvas'),
-    selectionBackground: `rgba(${accentRaw} / 0.3)`,
+    // A 0.3 accent overlay reads fine on the dark canvas but is nearly
+    // invisible over the near-white light canvas — raise the alpha in light
+    // mode so selections are actually visible.
+    selectionBackground: `rgba(${accentRaw} / ${isLight ? 0.45 : 0.3})`,
   };
 
   // ANSI palette overrides.
