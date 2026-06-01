@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Agent Dashboard',
-  description: 'Unified dashboard for AI CLI sessions',
+  title: 'Tudou',
+  description: 'Multi-agent dashboard for AI CLI sessions',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

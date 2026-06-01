@@ -18,6 +18,19 @@ import type {
 const PREVIEW_MAX = 200;
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i;
 
+/**
+ * Context-window size for a Claude model. The 4.x Opus/Sonnet models run a
+ * 1M-token window (observed: opus-4-8 holding 430k+ tokens uncompacted),
+ * while 3.x and Haiku stay at the classic 200k. Defaults to 200k when the
+ * model is unknown so we never *under*-report a near-full window.
+ */
+function claudeContextLimit(model: string | null): number {
+  if (model && (model.includes('opus-4') || model.includes('sonnet-4'))) {
+    return 1_000_000;
+  }
+  return 200_000;
+}
+
 export interface ClaudeAdapterOptions {
   /** Base of ~/.claude. Override for tests. */
   claudeHome?: string;
@@ -180,10 +193,21 @@ export class ClaudeAdapter implements CliAdapter {
 
         case 'assistant': {
           const msg = isRecord(parsed.message) ? parsed.message : null;
-          if (msg && typeof msg.model === 'string') {
+          // Claude Code injects placeholder turns (interrupts, system
+          // notices) with model "<synthetic>" and all-zero usage. They must
+          // not clobber the real model name, cost basis, or context snapshot.
+          const isSynthetic = msg?.model === '<synthetic>';
+          if (
+            msg &&
+            typeof msg.model === 'string' &&
+            !isSynthetic &&
+            msg.model !== currentModel
+          ) {
             currentModel = msg.model;
+            update.model = currentModel;
+            touched = true;
           }
-          const usage = isRecord(msg?.usage) ? msg.usage : null;
+          const usage = !isSynthetic && isRecord(msg?.usage) ? msg.usage : null;
           if (usage) {
             const input = numberFrom(usage.input_tokens);
             const cacheCreate = numberFrom(usage.cache_creation_input_tokens);
@@ -192,6 +216,10 @@ export class ClaudeAdapter implements CliAdapter {
             metrics.tokensInput += input + cacheCreate;
             metrics.tokensCached += cacheRead;
             metrics.tokensOutput += output;
+            // Context-window occupancy = this request's full prompt size
+            // (fresh input + cache write + cache read). Snapshot, not a sum.
+            metrics.contextTokens = input + cacheCreate + cacheRead;
+            metrics.contextLimit = claudeContextLimit(currentModel);
             refreshCost();
           }
 
@@ -329,7 +357,15 @@ export class ClaudeAdapter implements CliAdapter {
 // ---- helpers ----
 
 export function encodeProjectPath(absPath: string): string {
-  return absPath.replace(/\//g, '-');
+  // Claude names a project dir by replacing path separators, dots AND
+  // whitespace with '-'. Examples observed on disk:
+  //   ".../Application Support/..." → "...-Application-Support-..."
+  //   ".../diggr-app/.claude/..."   → "...-diggr-app--claude-..."
+  // We must match it exactly to locate a session's JSONL — only doing '/'
+  // meant chat sessions (cwd under "~/Library/Application Support/…", note
+  // the space) were never found, so their status dot stayed grey/starting.
+  // Existing hyphens and alphanumerics are preserved (uuids stay intact).
+  return absPath.replace(/[/.\s]/g, '-');
 }
 
 function freshMetrics(): SessionMetrics {

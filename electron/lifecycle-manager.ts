@@ -12,12 +12,32 @@ import type { Session, SessionStatus } from '../shared/session-types';
 import { IpcChannels } from '../shared/ipc-contracts';
 import type { SessionRegistry } from './session-registry';
 import type { PreferencesStore } from './preferences';
+import { TRAY_ICON_DATA_URL_1X, TRAY_ICON_DATA_URL_2X } from './tray-icon';
 
-const TRAY_LABEL_IDLE = 'AD';
+// With a real menubar icon present, idle = icon only (no text). Live state
+// appends a compact count beside the icon.
+const TRAY_LABEL_IDLE = '';
 const TRAY_LABEL_LIVE = (waitingCount: number, totalCount: number): string => {
   if (waitingCount > 0) return `● ${waitingCount}`;
-  return `${TRAY_LABEL_IDLE} · ${totalCount}`;
+  return `${totalCount}`;
 };
+
+/** Session is parked on the user: free/your-turn ('waiting') or stuck ('blocked'). */
+function needsAttention(status: SessionStatus): boolean {
+  return status === 'waiting' || status === 'blocked';
+}
+
+/** First non-empty line, whitespace-collapsed and length-capped — keeps a
+ *  notification body readable instead of dumping multi-line markdown. */
+function oneLine(text: string, max: number): string {
+  const line = text
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  if (!line) return '';
+  const collapsed = line.replace(/\s+/g, ' ');
+  return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
+}
 
 /**
  * Coordinates all macOS lifecycle / surface behaviors driven by Session
@@ -43,6 +63,9 @@ export class LifecycleManager {
     registry.on('add', (s) => this.onAdd(s));
     registry.on('update', (s) => this.onUpdate(s));
     registry.on('remove', ({ id }) => this.onRemove(id));
+    // Hook-confirmed end-of-turn / needs-permission — the only moments we
+    // want a notification. (Status flicker between tool calls does not.)
+    registry.on('attention', (s) => this.notify(s));
 
     app.on('before-quit', (e) => this.onBeforeQuit(e));
 
@@ -72,9 +95,23 @@ export class LifecycleManager {
     const prev = this.prevStatus.get(session.id);
     this.prevStatus.set(session.id, session.status);
 
-    // working → waiting is the "wake the user up" transition.
-    if (prev && prev !== 'waiting' && session.status === 'waiting') {
-      this.notifyWaiting(session);
+    // Errors warrant a notification regardless of hooks (they come from the
+    // PTY/adapter, not the hook pipeline).
+    if (prev && prev !== 'errored' && session.status === 'errored') {
+      this.notify(session);
+    }
+    // Entering a needs-you state (free/your-turn or blocked) is the "wake the
+    // user up" transition — but ONLY trust it for sessions without the hook
+    // pipeline. When hooks are wired the adapter's status flickers between
+    // tool calls; the `attention` event (Stop/Notification) is authoritative
+    // and handles notifications instead.
+    else if (
+      prev &&
+      !needsAttention(prev) &&
+      needsAttention(session.status) &&
+      !this.registry.isHookActive(session.id)
+    ) {
+      this.notify(session);
     }
     this.refreshAll();
   }
@@ -88,11 +125,11 @@ export class LifecycleManager {
 
   private refreshAll(): void {
     const sessions = this.registry.list();
-    const waiting = sessions.filter((s) => s.status === 'waiting');
+    const waiting = sessions.filter((s) => needsAttention(s.status));
     const working = sessions.filter((s) => s.status === 'working');
     const prefs = this.preferences.get();
 
-    // Dock badge: just the waiting count (empty when 0 or disabled).
+    // Dock badge: count of sessions waiting on the user (empty when 0/disabled).
     if (app.dock) {
       const show = prefs.notifications.dockBadge && waiting.length > 0;
       app.dock.setBadge(show ? String(waiting.length) : '');
@@ -123,18 +160,37 @@ export class LifecycleManager {
     }
   }
 
-  private notifyWaiting(session: Session): void {
+  private notify(session: Session): void {
     const prefs = this.preferences.get();
     if (!prefs.notifications.systemNotification) return;
     if (this.preferences.isQuietHoursNow()) return;
 
+    // Status-based copy — no raw transcript/markdown in the body. The user
+    // just needs to know WHICH session and WHAT happened.
+    const name = session.title || session.displayName;
+    let title: string;
+    let body: string;
+    switch (session.status) {
+      case 'blocked':
+        title = `${name} needs your decision`;
+        body = 'Waiting on a permission or a choice.';
+        break;
+      case 'errored':
+        title = `${name} ran into a problem`;
+        body = session.latestMessage?.preview
+          ? oneLine(session.latestMessage.preview, 140)
+          : 'The session errored.';
+        break;
+      case 'waiting':
+      default:
+        title = `${name} finished`;
+        body = 'Ready for your next message.';
+        break;
+    }
+
     const isForeground = this.window.isFocused() && !this.window.isMinimized();
     const wantSound = prefs.notifications.sound && !isForeground;
-    const notification = new Notification({
-      title: `${session.displayName} needs your input`,
-      body: session.latestMessage?.preview ?? 'Waiting for input',
-      silent: !wantSound,
-    });
+    const notification = new Notification({ title, body, silent: !wantSound });
     notification.on('click', () => this.focusSession(session.id));
     notification.show();
   }
@@ -148,20 +204,21 @@ export class LifecycleManager {
   }
 
   private installTray(): void {
-    // Empty NativeImage + setTitle lets us avoid shipping a PNG asset for
-    // M6 — macOS shows just the text label in the menubar. We'll swap in
-    // a proper template icon during M9 polish.
-    const icon = nativeImage.createEmpty();
+    // Monochrome template icon (the logo's potato silhouette), embedded as
+    // base64 so it survives packaging without a separate asset path
+    // (build/ isn't bundled). setTemplateImage(true) lets macOS recolor it
+    // to match the menubar, like every other well-behaved menubar icon.
+    // @2x representation keeps it crisp on Retina.
+    const icon = nativeImage.createFromDataURL(TRAY_ICON_DATA_URL_1X);
+    icon.addRepresentation({ scaleFactor: 2, dataURL: TRAY_ICON_DATA_URL_2X });
+    icon.setTemplateImage(true);
     const tray = new Tray(icon);
+    tray.setToolTip('Agent Dashboard');
     tray.setIgnoreDoubleClickEvents(true);
-    tray.on('click', () => {
-      if (this.window.isDestroyed()) return;
-      if (this.window.isVisible() && this.window.isFocused()) {
-        this.window.hide();
-      } else {
-        this.focusSession('');
-      }
-    });
+    // No click handler: a click just opens the dropdown menu (set below /
+    // refreshed on each sync). Toggling the window on raw clicks was
+    // confusing — show/hide now lives explicitly in the menu instead.
+    tray.setContextMenu(this.buildTrayMenu([], []));
     this.tray = tray;
   }
 
@@ -212,7 +269,7 @@ export class LifecycleManager {
     if (this.quitConfirmed) return;
     const live = this.registry
       .list()
-      .filter((s) => s.status === 'working' || s.status === 'waiting');
+      .filter((s) => s.status === 'working' || needsAttention(s.status));
     if (live.length === 0) return;
 
     e.preventDefault();

@@ -12,6 +12,7 @@ import type {
   SessionUpdate,
 } from '../shared/session-types';
 import { sanitizeSpawnEnv } from './env-sanitizer';
+import { setClaudeTheme } from './claude-settings';
 import { detectLoginPrompt } from './login-detector';
 import type { SessionPersistence } from './session-persistence';
 import type { ClaudeHookPayload } from './hook-server';
@@ -19,6 +20,10 @@ import type { CliAdapter, SpawnArgsInput } from './adapters/types';
 
 const LOGIN_SCAN_WINDOW_MS = 5000;
 const LOGIN_SCAN_BUFFER_LIMIT = 8 * 1024;
+// Trailing debounce for status transitions. Long enough to swallow the
+// transcript-replay burst on open (which is microtask-driven, so the timer
+// only fires once the burst settles), short enough to be imperceptible live.
+const STATUS_COALESCE_MS = 40;
 
 /** Narrow view of PtyManager used by SessionRegistry — keeps tests light. */
 export interface PtyHandle {
@@ -33,6 +38,7 @@ export interface PtyHandle {
   write(id: string, data: string): void;
   resize(id: string, cols: number, rows: number): void;
   kill(id: string, signal?: string): void;
+  getBuffer(id: string): string;
   on(event: 'data', listener: (e: PtyDataEvent) => void): unknown;
   on(event: 'exit', listener: (e: PtyExitEvent) => void): unknown;
   off(event: 'data', listener: (e: PtyDataEvent) => void): unknown;
@@ -50,6 +56,8 @@ export interface SpawnSessionRequest {
   spawnArgs?: SpawnArgsInput;
   /** Mark as panel-only (Side chat) — filtered from main sidebar. */
   panelOnly?: boolean;
+  /** Forwarded to env-sanitizer → COLORFGBG so the CLI matches our theme. */
+  theme?: 'dark' | 'light';
 }
 
 /**
@@ -79,6 +87,13 @@ interface SessionRegistryEvents {
   update: [Session];
   remove: [{ id: string }];
   data: [SessionDataEvent];
+  /**
+   * Fired only at the moments that actually warrant a notification — a
+   * Claude hook reporting end-of-turn (Stop) or a mid-turn permission
+   * request (Notification). Distinct from `update`/status flicker, which
+   * the JSONL adapter emits many times per turn (e.g. between tool calls).
+   */
+  attention: [Session];
 }
 
 export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
@@ -134,6 +149,17 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
   }
 
   /**
+   * Recent PTY output for the session, used to repopulate a fresh
+   * xterm after a renderer reload. Empty string if the session has
+   * no PTY (already exited) or no buffered output yet.
+   */
+  getScrollback(sessionId: string): string {
+    const ptyId = this.ptyIdFor(sessionId);
+    if (!ptyId) return '';
+    return this.pty.getBuffer(ptyId);
+  }
+
+  /**
    * Spawn a new CLI session. Creates a Session record in 'starting' state,
    * spawns the PTY, then asynchronously waits for the CLI's JSONL file to
    * appear and starts adapter watch in the background.
@@ -143,14 +169,31 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     const args = adapter.buildSpawnArgs(request.spawnArgs ?? {});
     const startedAt = new Date();
 
+    // Claude reads its theme from ~/.claude/settings.json at startup —
+    // make sure it matches the dashboard before we launch.
+    if (request.cli === 'claude' && request.theme) {
+      setClaudeTheme(request.theme);
+    }
+
     const ptyId = this.pty.spawn({
       shell: request.shellPath,
       args,
       cwd: request.cwd,
       cols: request.cols,
       rows: request.rows,
-      env: sanitizeSpawnEnv(process.env),
+      env: sanitizeSpawnEnv(process.env, { theme: request.theme }),
     });
+
+    // Preserve a prior custom/auto title (and name) when resuming so a
+    // rename survives across dashboard restarts — otherwise the resumed
+    // session would revert to a fresh `<project> · HH:MM` name.
+    let carried: { displayName: string; title: string | null } | null = null;
+    if (this.persistence && request.spawnArgs?.resume) {
+      const prior = this.persistence
+        .list()
+        .find((r) => r.cli === request.cli && r.cliSessionId === request.spawnArgs!.resume);
+      if (prior) carried = { displayName: prior.displayName, title: prior.title ?? null };
+    }
 
     const sessionId = randomUUID();
     const session: Session = {
@@ -159,7 +202,8 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       cliSessionId: null,
       cwd: request.cwd,
       gitBranch: null,
-      displayName: autoName(request.cwd, startedAt, request.cli),
+      displayName: carried?.displayName ?? autoName(request.cwd, startedAt, request.cli),
+      title: carried?.title ?? null,
       status: 'starting',
       statusConfidence: 'low',
       startedAt: startedAt.toISOString(),
@@ -195,6 +239,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
         cliSessionId: request.spawnArgs?.resume ?? null,
         cwd: request.cwd,
         displayName: session.displayName,
+        title: session.title,
         startedAt: session.startedAt,
       });
     }
@@ -247,6 +292,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
         cliSessionId: rec.cliSessionId,
         cwd: rec.cwd,
         displayName: rec.displayName,
+        title: rec.title ?? null,
         startedAt: rec.startedAt,
         resumable,
       });
@@ -293,12 +339,32 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     this.hookActiveCliSessionIds.add(cliSessionId);
 
     const update: SessionUpdate = { statusConfidence: 'high' };
-    // Stop = end of turn, Notification = mid-turn permission/decision —
-    // both mean "user needs to act". UserPromptSubmit means model is now
-    // thinking on the user's input.
-    if (event === 'Stop' || event === 'Notification') update.status = 'waiting';
+    // Stop = turn finished → free / your turn ('waiting'). Notification =
+    // stuck mid-turn on a permission or choice → 'blocked'. UserPromptSubmit
+    // = model is now working on the user's input.
+    const needsUser = event === 'Stop' || event === 'Notification';
+    if (event === 'Stop') update.status = 'waiting';
+    else if (event === 'Notification') update.status = 'blocked';
     else if (event === 'UserPromptSubmit') update.status = 'working';
     this.applyUpdate(targetId, update);
+
+    // These two hook events are the authoritative "notify now" signals —
+    // emit a dedicated event so the lifecycle manager can notify on them
+    // rather than on noisy adapter status flicker.
+    if (needsUser) {
+      const session = this.sessions.get(targetId);
+      if (session) this.emit('attention', session);
+    }
+  }
+
+  /**
+   * True once a Claude hook has fired for this session — i.e. we have the
+   * reliable Stop/Notification signal and no longer need to fall back to
+   * the JSONL adapter's heuristic status transitions for notifications.
+   */
+  isHookActive(sessionId: string): boolean {
+    const s = this.sessions.get(sessionId);
+    return s?.cliSessionId != null && this.hookActiveCliSessionIds.has(s.cliSessionId);
   }
 
   /** Forward user keystrokes (or pasted text) to the session's PTY. */
@@ -325,6 +391,47 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     }
     this.persistence?.remove(sessionId);
     this.emit('remove', { id: sessionId });
+  }
+
+  /**
+   * Like `forget`, but keeps the persistence record so the session can
+   * be lazily resumed later from the sidebar. Used when the user closes
+   * a live session tab — the underlying CLI history file still exists,
+   * so we want it to reappear as a dormant entry next refresh.
+   */
+  release(sessionId: string): void {
+    if (!this.sessions.has(sessionId)) return;
+    this.cleanupWatch(sessionId);
+    this.sessions.delete(sessionId);
+    for (const [ptyId, sid] of this.ptyToSession) {
+      if (sid === sessionId) this.ptyToSession.delete(ptyId);
+    }
+    this.emit('remove', { id: sessionId });
+  }
+
+  /**
+   * Set a custom title on a session. Works for both live sessions (updates
+   * the in-memory record + emits an update) and dormant ones (patches the
+   * persistence record only). An empty/whitespace title clears it back to
+   * null, which re-enables first-prompt auto-seeding.
+   */
+  rename(sessionId: string, title: string): void {
+    const clean = title.trim();
+    const next = clean === '' ? null : clean;
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      const updated: Session = {
+        ...session,
+        title: next,
+        lastActivityAt: new Date().toISOString(),
+      };
+      this.sessions.set(sessionId, updated);
+      this.persistence?.patch(sessionId, { title: next });
+      this.emit('update', updated);
+      return;
+    }
+    // Dormant session — only the persisted record exists.
+    this.persistence?.patch(sessionId, { title: next });
   }
 
   disposeAll(): void {
@@ -367,9 +474,43 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       }
       if (!file || controller.signal.aborted) return;
 
-      for await (const update of adapter.watch(file, controller.signal)) {
-        if (!this.sessions.has(sessionId)) return;
-        this.applyUpdate(sessionId, update);
+      // Coalesce STATUS only. Opening a session replays the whole transcript
+      // (one update per line, all in a microtask burst), so the dot would
+      // flicker green↔amber through every historical turn. We apply the
+      // other fields (metrics, latestMessage, …) immediately — that keeps
+      // the count-up and first-prompt title seeding intact — but buffer the
+      // status and apply just the final value once the burst goes quiet.
+      let pendingStatus: SessionStatus | undefined;
+      let statusTimer: ReturnType<typeof setTimeout> | null = null;
+      let initialReplayDone = false;
+      const flushStatus = (): void => {
+        statusTimer = null;
+        if (pendingStatus === undefined || !this.sessions.has(sessionId)) return;
+        // On resume, the transcript's trailing status is historical: the CLI
+        // loaded the session and is idle (waiting for input), not actually
+        // mid-task — even when the transcript ends on an open tool_use or a
+        // tool_result. Clamp that first settled status to 'waiting' so the dot
+        // isn't a misleading green. Live updates afterward drive it normally.
+        const clampStale =
+          !initialReplayDone && resumeId !== undefined && pendingStatus === 'working';
+        this.applyUpdate(sessionId, { status: clampStale ? 'waiting' : pendingStatus });
+        initialReplayDone = true;
+        pendingStatus = undefined;
+      };
+      try {
+        for await (const update of adapter.watch(file, controller.signal)) {
+          if (!this.sessions.has(sessionId)) break;
+          const { status, ...rest } = update;
+          if (Object.keys(rest).length > 0) this.applyUpdate(sessionId, rest);
+          if (status !== undefined) {
+            pendingStatus = status;
+            if (statusTimer) clearTimeout(statusTimer);
+            statusTimer = setTimeout(flushStatus, STATUS_COALESCE_MS);
+          }
+        }
+      } finally {
+        if (statusTimer) clearTimeout(statusTimer);
+        flushStatus();
       }
     } catch (err) {
       if (this.sessions.has(sessionId)) {
@@ -390,6 +531,15 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       ? 'high'
       : (update.statusConfidence ?? current.statusConfidence);
 
+    // Auto-seed a title from the first user prompt so sessions sharing a
+    // project don't all read `<project> · HH:MM`. Only fires while title is
+    // still empty — a user rename (non-null) is never clobbered, and later
+    // prompts don't keep rewriting it.
+    const seededTitle =
+      !current.title && update.latestMessage?.role === 'user'
+        ? deriveTitle(update.latestMessage.preview)
+        : null;
+
     const next: Session = {
       ...current,
       ...(update.status !== undefined ? { status: update.status } : {}),
@@ -398,6 +548,8 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       ...(update.metrics !== undefined ? { metrics: update.metrics } : {}),
       ...(update.latestMessage !== undefined ? { latestMessage: update.latestMessage } : {}),
       ...(update.currentTool !== undefined ? { currentTool: update.currentTool } : {}),
+      ...(update.model !== undefined ? { model: update.model } : {}),
+      ...(seededTitle ? { title: seededTitle } : {}),
       statusConfidence: nextConfidence,
       lastActivityAt: new Date().toISOString(),
     };
@@ -410,6 +562,9 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       update.cliSessionId !== current.cliSessionId
     ) {
       this.persistence.patch(sessionId, { cliSessionId: update.cliSessionId });
+    }
+    if (this.persistence && seededTitle) {
+      this.persistence.patch(sessionId, { title: seededTitle });
     }
 
     this.emit('update', next);
@@ -505,6 +660,23 @@ function freshMetrics(): SessionMetrics {
     estimatedCostUSD: null,
     messageCount: 0,
   };
+}
+
+const TITLE_MAX = 40;
+
+/**
+ * Turn the first user prompt into a compact one-line title: first
+ * non-empty line, whitespace collapsed, capped at TITLE_MAX chars.
+ * Returns null if nothing usable remains (e.g. a blank prompt).
+ */
+function deriveTitle(preview: string): string | null {
+  const firstLine = preview
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  if (!firstLine) return null;
+  const collapsed = firstLine.replace(/\s+/g, ' ');
+  return collapsed.length > TITLE_MAX ? `${collapsed.slice(0, TITLE_MAX - 1).trimEnd()}…` : collapsed;
 }
 
 function autoName(cwd: string, at: Date, cli: CliKind): string {

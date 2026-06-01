@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { cn } from '../../lib/utils';
 import { useUIStore } from '../../lib/stores/ui-store';
 
@@ -31,6 +32,7 @@ export function HookSetupModal() {
   const [mode, setMode] = useState<'overview' | 'manual' | 'installed'>('overview');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
 
   // First-launch auto-open: only when not installed AND user hasn't told us no.
   useEffect(() => {
@@ -75,13 +77,10 @@ export function HookSetupModal() {
     }
   }, []);
 
-  const uninstall = useCallback(async () => {
+  const doUninstall = useCallback(async () => {
+    setConfirmUninstall(false);
     const api = window.agentDashboard?.hooks;
     if (!api) return;
-    const ok = window.confirm(
-      'Remove the dashboard hook from ~/.claude/settings.json? Status will fall back to polling mode (~10s SLA instead of <3s).',
-    );
-    if (!ok) return;
     setPending(true);
     setError(null);
     try {
@@ -108,29 +107,17 @@ export function HookSetupModal() {
   }, [setOpen]);
 
   return (
-    <Modal
-      open={open}
-      onClose={() => setOpen(false)}
-      title="Status notifications: enable Claude hook?"
-      maxWidth="max-w-xl"
-    >
+    <Modal open={open} onClose={() => setOpen(false)} title="Claude hook" maxWidth="max-w-lg">
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted">
-          Without a hook, the dashboard polls Claude's JSONL to guess when a
-          session is waiting on you — about <span className="text-ink">10 s</span>
-          {' '}latency. With a hook, Claude pushes the event directly:{' '}
-          <span className="text-ink">&lt;3 s</span> and tagged as high-confidence.
-        </p>
-
         {status && (
           <StatusBox
-            label="Current hook state"
+            label="Status"
             value={
               status.fullyInstalled
-                ? `Installed (${status.registeredEvents.join(', ')})`
+                ? `Installed · ${status.registeredEvents.length} events`
                 : status.registeredEvents.length > 0
-                  ? `Partial (${status.registeredEvents.join(', ')})`
-                  : 'Not installed (polling mode)'
+                  ? `Partial · ${status.registeredEvents.length} events`
+                  : 'Polling mode (10s latency)'
             }
             tone={status.fullyInstalled ? 'good' : 'neutral'}
           />
@@ -192,13 +179,22 @@ export function HookSetupModal() {
               <Button size="md" variant="ghost" onClick={() => setOpen(false)}>
                 Close
               </Button>
-              <Button size="md" variant="danger" disabled={pending} onClick={() => void uninstall()}>
+              <Button size="md" variant="danger" disabled={pending} onClick={() => setConfirmUninstall(true)}>
                 {pending ? 'Removing…' : 'Uninstall'}
               </Button>
             </>
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmUninstall}
+        title="Remove the dashboard hook?"
+        description="Falls back to polling mode (~10s SLA instead of <3s). Your ~/.claude/settings.json keeps everything else."
+        confirmLabel="Uninstall"
+        destructive
+        onConfirm={() => void doUninstall()}
+        onCancel={() => setConfirmUninstall(false)}
+      />
     </Modal>
   );
 }

@@ -1,6 +1,25 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import {
+  ChevronDown,
+  ChevronRight,
+  Code,
+  Eye,
+  File as FileIcon,
+  FileCode,
+  FileImage,
+  FileText,
+  Folder,
+  Loader2,
+  PanelLeft,
+  PanelLeftClose,
+  Settings as SettingsIcon,
+  TerminalSquare,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   selectActiveSession,
   useSessionsStore,
@@ -23,9 +42,9 @@ interface FilePreview {
 
 /**
  * Read-only file browser scoped to the active session's cwd.
- * Left: tree with collapsible folders + filter.  Right: text preview
- * of the selected file. Layout collapses to vertical when the panel
- * is narrow (parent decides — we just use flex-wrap-ish proportions).
+ * Left: filter + collapsible tree.  Right: text preview of the selected
+ * file. The preview header can collapse the tree to give the file the
+ * full panel width.
  */
 export function FilesPanel() {
   const cwd = useSessionsStore((s) => selectActiveSession(s)?.cwd ?? null);
@@ -37,6 +56,8 @@ export function FilesPanel() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [treeCollapsed, setTreeCollapsed] = useState(false);
+  // Markdown files render formatted by default; this flips to raw source.
+  const [showRaw, setShowRaw] = useState(false);
 
   const loadDir = useCallback(async (dir: string): Promise<void> => {
     const api = window.agentDashboard?.files;
@@ -88,6 +109,7 @@ export function FilesPanel() {
     setSelected(path);
     setPreview(null);
     setPreviewError(null);
+    setShowRaw(false);
     try {
       const p = await api.preview(path);
       setPreview(p);
@@ -111,7 +133,7 @@ export function FilesPanel() {
 
   if (!cwd) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-xs text-muted">
+      <div className="flex h-full items-center justify-center p-6 text-sm text-muted">
         Pick an active session — Files is scoped to its working directory.
       </div>
     );
@@ -121,84 +143,115 @@ export function FilesPanel() {
     <div className="flex h-full min-h-0">
       {!treeCollapsed && (
         <div className="flex w-[40%] min-w-[180px] max-w-[320px] flex-col border-r border-edge/5">
-          <div className="flex items-center gap-1 border-b border-edge/5 p-2">
+          <div className="shrink-0 border-b border-edge/5 p-2">
             <input
               type="text"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter files…"
-              className="flex-1 rounded-md border border-edge/10 bg-sunken px-2 py-1 text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
+              // min-w-0 lets the input shrink inside the narrow tree column;
+              // without it the input's intrinsic min-width spills past the
+              // column's right border into the preview pane.
+              className="w-full min-w-0 rounded-md border border-edge/10 bg-sunken px-2.5 py-1.5 text-sm text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
             />
           </div>
-        <div className="flex-1 overflow-y-auto p-1 font-mono text-xs">
-          {visible ? (
-            visible.length === 0 ? (
-              <div className="px-2 py-1 text-muted">No matches.</div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-1 font-mono text-sm">
+            {visible ? (
+              visible.length === 0 ? (
+                <div className="px-2 py-1 text-muted">No matches.</div>
+              ) : (
+                visible.map((ent) => (
+                  <Row
+                    key={ent.path}
+                    entry={ent}
+                    depth={0}
+                    selected={selected === ent.path}
+                    onPickFile={() => void selectFile(ent.path)}
+                    onToggle={() => toggleDir(ent.path)}
+                    expanded={false}
+                    loading={false}
+                  />
+                ))
+              )
             ) : (
-              visible.map((ent) => (
-                <Row
-                  key={ent.path}
-                  entry={ent}
-                  depth={0}
-                  selected={selected === ent.path}
-                  onPickFile={() => void selectFile(ent.path)}
-                  onToggle={() => toggleDir(ent.path)}
-                  expanded={false}
-                  loading={false}
-                />
-              ))
-            )
-          ) : (
-            <TreeNode
-              dir={cwd}
-              depth={0}
-              isRoot
-              expanded={expanded}
-              childrenByDir={childrenByDir}
-              loadingDirs={loadingDirs}
-              selected={selected}
-              onToggle={toggleDir}
-              onPickFile={selectFile}
-            />
-          )}
-        </div>
+              <TreeNode
+                dir={cwd}
+                depth={0}
+                isRoot
+                expanded={expanded}
+                childrenByDir={childrenByDir}
+                loadingDirs={loadingDirs}
+                selected={selected}
+                onToggle={toggleDir}
+                onPickFile={selectFile}
+              />
+            )}
+          </div>
         </div>
       )}
-      <div className="flex flex-1 flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         {!selected ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1 text-muted">
-            <div className="text-sm">Open a file</div>
-            <div className="text-xs">Pick something from the tree on the left.</div>
+          <div className="flex h-full flex-col items-center justify-center gap-1.5 text-muted">
+            <div className="text-base">Open a file</div>
+            <div className="text-sm">Pick something from the tree on the left.</div>
           </div>
         ) : (
           <>
-            <div className="flex h-7 shrink-0 items-center gap-2 border-b border-edge/5 bg-surface px-2 text-[10px] uppercase tracking-wider text-subtle">
+            <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge/5 bg-surface/60 px-2.5 text-[11px] uppercase tracking-wider text-subtle">
               <button
                 type="button"
                 onClick={() => setTreeCollapsed((v) => !v)}
-                className="rounded p-0.5 text-subtle hover:bg-canvas hover:text-ink"
-                title={treeCollapsed ? 'Show file tree' : 'Hide file tree'}
+                aria-label={treeCollapsed ? 'Show file tree' : 'Hide file tree'}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-subtle hover:bg-canvas hover:text-ink"
               >
-                {treeCollapsed ? '▷' : '◁'}
+                {treeCollapsed ? (
+                  <PanelLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
+                ) : (
+                  <PanelLeftClose className="h-3.5 w-3.5" strokeWidth={1.75} />
+                )}
               </button>
-              <span className="truncate font-mono normal-case text-muted">{trimCwd(selected, cwd)}</span>
-            </div>
-            <div className="flex-1 overflow-auto bg-sunken p-3 font-mono text-[12px] leading-relaxed text-ink">
-              {previewError ? (
-                <div className="text-danger">{previewError}</div>
-              ) : !preview ? (
-                <div className="text-muted">Loading…</div>
-              ) : preview.binary ? (
-                <div className="text-muted">Binary file — preview skipped. ({preview.size.toLocaleString()} bytes)</div>
-              ) : (
-                <>
-                  <pre className="whitespace-pre-wrap break-words">{preview.content}</pre>
-                  {preview.truncated && (
-                    <div className="mt-3 text-xs text-warning">
-                      … truncated at {Math.floor(preview.content.length / 1024)} KB
-                    </div>
+              <span className="min-w-0 flex-1 truncate font-mono normal-case text-sm text-muted">
+                {trimCwd(selected, cwd)}
+              </span>
+              {isMarkdown(selected) && (
+                <button
+                  type="button"
+                  onClick={() => setShowRaw((v) => !v)}
+                  aria-label={showRaw ? 'Show formatted Markdown' : 'Show raw source'}
+                  title={showRaw ? 'Show formatted Markdown' : 'Show raw source'}
+                  className="flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-subtle hover:bg-canvas hover:text-ink"
+                >
+                  {showRaw ? (
+                    <Eye className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  ) : (
+                    <Code className="h-3.5 w-3.5" strokeWidth={1.75} />
                   )}
-                </>
+                  <span className="text-[10px] normal-case">{showRaw ? 'Preview' : 'Raw'}</span>
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-auto bg-sunken p-3">
+              {previewError ? (
+                <div className="font-mono text-[13px] text-danger">{previewError}</div>
+              ) : !preview ? (
+                <div className="font-mono text-[13px] text-muted">Loading…</div>
+              ) : preview.binary ? (
+                <div className="font-mono text-[13px] text-muted">
+                  Binary file — preview skipped. ({preview.size.toLocaleString()} bytes)
+                </div>
+              ) : isMarkdown(selected) && !showRaw ? (
+                <div className="md-preview">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.content}</ReactMarkdown>
+                </div>
+              ) : (
+                <pre className="whitespace-pre font-mono text-[13px] leading-relaxed text-ink">
+                  {preview.content}
+                </pre>
+              )}
+              {preview && !preview.binary && preview.truncated && (
+                <div className="mt-3 text-xs text-warning">
+                  … truncated at {Math.floor(preview.content.length / 1024)} KB
+                </div>
               )}
             </div>
           </>
@@ -287,46 +340,52 @@ interface RowProps {
   onPickFile: () => void;
 }
 
-function Row({ entry, depth, expanded, loading, selected, onToggle, onPickFile }: RowProps) {
+function Row({ entry, depth, expanded, loading, selected, onToggle }: RowProps) {
+  const Icon = entry.kind === 'dir' ? Folder : iconFor(entry.name);
   return (
     <button
       type="button"
       onClick={onToggle}
       className={cn(
-        'flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-ink hover:bg-surface',
-        selected && 'bg-surface ring-1 ring-accent/40',
+        'flex w-full items-center gap-1.5 truncate rounded px-1 py-1 text-left',
+        'hover:bg-surface/60',
+        selected ? 'bg-accent/10 text-ink' : 'text-muted',
       )}
       style={{ paddingLeft: 4 + depth * 12 }}
       title={entry.path}
     >
-      <span className="inline-block w-3 text-subtle">
-        {entry.kind === 'dir' ? (loading ? '⋯' : expanded ? '▾' : '▸') : ''}
+      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-subtle">
+        {entry.kind === 'dir' ? (
+          loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+          ) : expanded ? (
+            <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
+          )
+        ) : null}
       </span>
-      <span className="text-[10px]">{entry.kind === 'dir' ? '📁' : iconFor(entry.name)}</span>
+      <Icon className="h-3.5 w-3.5 shrink-0 text-subtle" strokeWidth={1.75} />
       <span className="truncate">{entry.name}</span>
-      { }
-      {/* Click on file should always pick file */}
-      {entry.kind === 'file' && (
-        <span
-          className="hidden"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPickFile();
-          }}
-        />
-      )}
     </button>
   );
 }
 
-function iconFor(name: string): string {
+function isMarkdown(path: string): boolean {
+  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+  return ext === 'md' || ext === 'mdx' || ext === 'markdown';
+}
+
+function iconFor(name: string): LucideIcon {
   const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
-  if (['md', 'mdx'].includes(ext)) return '📝';
-  if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'].includes(ext)) return '⌨';
-  if (['json'].includes(ext)) return '⚙';
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return '🖼';
-  if (['sh', 'zsh', 'bash'].includes(ext)) return '▦';
-  return '·';
+  if (['md', 'mdx', 'txt', 'rst'].includes(ext)) return FileText;
+  if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'rs', 'go', 'rb', 'java'].includes(ext)) {
+    return FileCode;
+  }
+  if (['json', 'yml', 'yaml', 'toml'].includes(ext)) return SettingsIcon;
+  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return FileImage;
+  if (['sh', 'zsh', 'bash', 'fish'].includes(ext)) return TerminalSquare;
+  return FileIcon;
 }
 
 function trimCwd(path: string, cwd: string): string {

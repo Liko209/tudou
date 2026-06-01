@@ -1,6 +1,7 @@
 'use client';
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Button } from '../../components/ui/Button';
 
 interface Props {
   children: ReactNode;
@@ -60,20 +61,12 @@ export class ErrorBoundary extends Component<Props, State> {
             </details>
           )}
           <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={this.reset}
-              className="rounded-md border border-edge/10 px-3 py-1.5 text-xs text-ink hover:border-accent/60"
-            >
+            <Button size="sm" variant="default" onClick={this.reset}>
               Try again
-            </button>
-            <button
-              type="button"
-              onClick={this.reload}
-              className="rounded-md border border-edge/10 px-3 py-1.5 text-xs text-ink hover:border-accent/60"
-            >
+            </Button>
+            <Button size="sm" variant="ghost" onClick={this.reload}>
               Reload window
-            </button>
+            </Button>
           </div>
         </div>
       </div>

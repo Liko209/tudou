@@ -22,21 +22,17 @@ module.exports = {
         danger: 'rgb(var(--danger) / <alpha-value>)',
       },
       fontFamily: {
-        sans: [
-          '-apple-system',
-          'BlinkMacSystemFont',
-          'SF Pro Text',
-          'Segoe UI',
-          'system-ui',
-          'sans-serif',
-        ],
-        mono: ['SF Mono', 'JetBrains Mono', 'Menlo', 'monospace'],
+        // Single font family across the whole app — UI sans, UI mono, and
+        // the embedded xterm all render in JetBrains Mono. Falls back to
+        // SF Mono → Menlo if JetBrains Mono is not installed.
+        sans: ['JetBrains Mono', 'SF Mono', 'Menlo', 'monospace'],
+        mono: ['JetBrains Mono', 'SF Mono', 'Menlo', 'monospace'],
       },
       fontSize: {
-        xs: ['11px', '16px'],
-        sm: ['12px', '18px'],
-        base: ['13px', '20px'],
-        lg: ['15px', '22px'],
+        xs: ['12px', '17px'],
+        sm: ['13px', '19px'],
+        base: ['14px', '21px'],
+        lg: ['16px', '24px'],
       },
     },
   },

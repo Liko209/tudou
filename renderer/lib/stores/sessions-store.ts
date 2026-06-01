@@ -1,8 +1,19 @@
 import { create } from 'zustand';
-import type { Session, SessionUpdate } from '../../../shared/session-types';
+import type {
+  PreviousSession,
+  Session,
+  SessionUpdate,
+} from '../../../shared/session-types';
 
 interface SessionsState {
   sessions: Record<string, Session>;
+  /**
+   * Persisted-but-not-running sessions. Surfaced in the sidebar as
+   * dormant entries that the user can click to lazily resume.
+   * Sourced from main via `sessions.listPrevious()` and refreshed
+   * whenever the live list changes.
+   */
+  previous: PreviousSession[];
   activeId: string | null;
 
   upsertSession: (session: Session) => void;
@@ -10,10 +21,14 @@ interface SessionsState {
   removeSession: (id: string) => void;
   setActive: (id: string | null) => void;
   bulkReplace: (sessions: Session[]) => void;
+  setPrevious: (list: PreviousSession[]) => void;
+  removePrevious: (id: string) => void;
+  renamePrevious: (id: string, title: string | null) => void;
 }
 
 export const useSessionsStore = create<SessionsState>((set) => ({
   sessions: {},
+  previous: [],
   activeId: null,
 
   upsertSession: (session) =>
@@ -57,6 +72,16 @@ export const useSessionsStore = create<SessionsState>((set) => ({
     set({
       sessions: Object.fromEntries(sessions.map((s) => [s.id, s])),
     }),
+
+  setPrevious: (list) => set({ previous: list }),
+
+  removePrevious: (id) =>
+    set((state) => ({ previous: state.previous.filter((p) => p.id !== id) })),
+
+  renamePrevious: (id, title) =>
+    set((state) => ({
+      previous: state.previous.map((p) => (p.id === id ? { ...p, title } : p)),
+    })),
 }));
 
 /**
@@ -129,6 +154,130 @@ export function partitionSessions(
   chats.sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1));
   return {
     projects: groupSessionsByCwd(projectSessions),
+    chats,
+  };
+}
+
+/**
+ * Unified sidebar item — either a live session or a dormant previous one.
+ * Built by merging the live `sessions` map with the `previous` list and
+ * deduping by cliSessionId (live wins).
+ */
+export interface SidebarItem {
+  /** Stable key for React: live session id or previous record id. */
+  key: string;
+  cli: Session['cli'];
+  cwd: string;
+  displayName: string;
+  /** Custom/auto title; falls back to displayName when null. */
+  title: string | null;
+  /** Creation time — used for the stable sidebar order (newest appended). */
+  startedAt: string;
+  lastActivityAt: string;
+  isLive: boolean;
+  live: Session | null;
+  dormant: PreviousSession | null;
+}
+
+function liveToItem(s: Session): SidebarItem {
+  return {
+    key: s.id,
+    cli: s.cli,
+    cwd: s.cwd,
+    displayName: s.displayName,
+    title: s.title,
+    startedAt: s.startedAt,
+    lastActivityAt: s.lastActivityAt,
+    isLive: true,
+    live: s,
+    dormant: null,
+  };
+}
+
+function dormantToItem(p: PreviousSession): SidebarItem {
+  return {
+    key: `prev:${p.id}`,
+    cli: p.cli,
+    cwd: p.cwd,
+    displayName: p.displayName,
+    title: p.title ?? null,
+    startedAt: p.startedAt,
+    lastActivityAt: p.startedAt,
+    isLive: false,
+    live: null,
+    dormant: p,
+  };
+}
+
+/**
+ * Merge live sessions + dormant previous sessions into one sidebar list,
+ * partitioned into Projects (grouped by cwd) and Chats (flat). Dedupes
+ * by cliSessionId — if a previous record matches a live session's id,
+ * the live one wins and the dormant copy is dropped.
+ */
+export function buildSidebarItems(
+  sessions: Record<string, Session>,
+  previous: PreviousSession[],
+  chatsBaseDir: string,
+): {
+  projects: Array<{ cwd: string; items: SidebarItem[] }>;
+  chats: SidebarItem[];
+} {
+  // Dedup keys — a previous record is considered "the same as" a live
+  // session when EITHER their internal dashboard id matches (always
+  // true right after a resume) OR their `cli:cliSessionId` pair matches
+  // (catches the moment after the adapter has discovered cliSessionId
+  // but before the persistence record was rewritten). Without the id
+  // check, a freshly-resumed session briefly renders as two rows
+  // because the live Session starts with cliSessionId=null while its
+  // persistence row already carries the resume target.
+  const liveIds = new Set<string>(Object.keys(sessions));
+  const liveCliIds = new Set<string>();
+  for (const s of Object.values(sessions)) {
+    if (s.cliSessionId) liveCliIds.add(`${s.cli}:${s.cliSessionId}`);
+  }
+
+  const items: SidebarItem[] = [];
+  for (const s of Object.values(sessions)) {
+    if (s.panelOnly) continue;
+    items.push(liveToItem(s));
+  }
+  for (const p of previous) {
+    if (liveIds.has(p.id)) continue;
+    if (p.cliSessionId && liveCliIds.has(`${p.cli}:${p.cliSessionId}`)) continue;
+    items.push(dormantToItem(p));
+  }
+
+  const projects = new Map<string, SidebarItem[]>();
+  const chats: SidebarItem[] = [];
+  for (const it of items) {
+    if (chatsBaseDir && it.cwd.startsWith(chatsBaseDir)) {
+      chats.push(it);
+    } else {
+      const arr = projects.get(it.cwd) ?? [];
+      arr.push(it);
+      projects.set(it.cwd, arr);
+    }
+  }
+
+  // Stable order by creation time (oldest first; new sessions append to the
+  // bottom). Deliberately NOT last-activity — sorting by activity reshuffled
+  // the list every time you clicked a session, which was disorienting.
+  const byCreated = (a: SidebarItem, b: SidebarItem): number =>
+    a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0;
+  const sortItems = (arr: SidebarItem[]): SidebarItem[] => arr.sort(byCreated);
+
+  chats.sort(byCreated);
+
+  return {
+    projects: [...projects.entries()]
+      .map(([cwd, arr]) => ({ cwd, items: sortItems(arr) }))
+      // Order projects by their oldest session's creation time, also stable.
+      .sort((a, b) => {
+        const aT = a.items[0]?.startedAt ?? '';
+        const bT = b.items[0]?.startedAt ?? '';
+        return aT < bT ? -1 : aT > bT ? 1 : 0;
+      }),
     chats,
   };
 }

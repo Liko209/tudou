@@ -31,7 +31,10 @@ export function useKeyboardShortcuts(): void {
 
       if (e.key === 't' || e.key === 'T') {
         e.preventDefault();
-        useUIStore.getState().setNewSessionOpen(true);
+        // Clear any sticky `newSessionMode` from a sidebar "+" click —
+        // ⌘T is a generic shortcut that should land on the modal's
+        // own default scope, not whatever was last picked.
+        useUIStore.getState().openNewSession();
         return;
       }
 

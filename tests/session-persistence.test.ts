@@ -21,6 +21,7 @@ function sample(over: Partial<PersistedSession> = {}): PersistedSession {
     cliSessionId: 'claude-abc-123',
     cwd: '/Users/fixture/workspace/demo',
     displayName: 'demo · 14:32',
+    title: null,
     startedAt: '2026-05-28T10:00:00.000Z',
     lastSeenAt: '2026-05-28T10:30:00.000Z',
     ...over,

@@ -1,50 +1,71 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Minimize2,
+  FolderPlus,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  SquarePen,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { basename } from '../../lib/path-helpers';
 import { cn } from '../../lib/utils';
 import { timeAgo } from '../../lib/time-ago';
 import {
-  partitionSessions,
+  buildSidebarItems,
+  type SidebarItem,
   useSessionsStore,
 } from '../../lib/stores/sessions-store';
 import { useUIStore } from '../../lib/stores/ui-store';
-import { Button } from '../../components/ui/Button';
+import { resolveActiveTheme } from '../../lib/active-theme';
 import { StatusDot } from './StatusDot';
-import type { Session } from '../../../shared/session-types';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 
 const CLI_LABEL: Record<'claude' | 'codex', string> = {
-  claude: 'Claude',
-  codex: 'Codex',
+  claude: 'CL',
+  codex: 'CX',
 };
 
 export function Sidebar() {
   const sessions = useSessionsStore((s) => s.sessions);
+  const previous = useSessionsStore((s) => s.previous);
   const activeId = useSessionsStore((s) => s.activeId);
   const setActive = useSessionsStore((s) => s.setActive);
-  const setNewSessionOpen = useUIStore((s) => s.setNewSessionOpen);
+  const removePrevious = useSessionsStore((s) => s.removePrevious);
+  const renamePrevious = useSessionsStore((s) => s.renamePrevious);
+  const openNewSession = useUIStore((s) => s.openNewSession);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
+  const sectionsCollapsed = useUIStore((s) => s.sectionsCollapsed);
+  const toggleSectionCollapsed = useUIStore((s) => s.toggleSectionCollapsed);
 
   const [chatsBaseDir, setChatsBaseDir] = useState('');
   const [query, setQuery] = useState('');
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
+  const [confirmKillItem, setConfirmKillItem] = useState<SidebarItem | null>(null);
+  const [pendingResumeKey, setPendingResumeKey] = useState<string | null>(null);
 
   useEffect(() => {
     setChatsBaseDir(window.agentDashboard?.env.chatsBaseDir() ?? '');
   }, []);
 
   const { projects, chats } = useMemo(
-    () => partitionSessions(sessions, chatsBaseDir),
-    [sessions, chatsBaseDir],
+    () => buildSidebarItems(sessions, previous, chatsBaseDir),
+    [sessions, previous, chatsBaseDir],
   );
 
   const q = query.trim().toLowerCase();
-  const matches = (s: Session): boolean => {
+  const matches = (it: SidebarItem): boolean => {
     if (!q) return true;
     return (
-      s.displayName.toLowerCase().includes(q) ||
-      s.cwd.toLowerCase().includes(q) ||
-      (s.latestMessage?.preview.toLowerCase().includes(q) ?? false)
+      it.displayName.toLowerCase().includes(q) ||
+      it.cwd.toLowerCase().includes(q) ||
+      (it.live?.latestMessage?.preview.toLowerCase().includes(q) ?? false)
     );
   };
 
@@ -62,88 +83,221 @@ export function Sidebar() {
     });
   };
 
-  const killAndForget = async (id: string): Promise<void> => {
+  const collapseAllProjects = (): void => {
+    setCollapsedProjects(new Set(visibleProjects.map((g) => g.cwd)));
+  };
+
+  const handleSelect = async (it: SidebarItem): Promise<void> => {
+    if (it.isLive && it.live) {
+      setActive(it.live.id);
+      return;
+    }
+    if (!it.dormant || !it.dormant.resumable || !it.dormant.cliSessionId) return;
     const api = window.agentDashboard?.sessions;
     if (!api) return;
-    const s = sessions[id];
-    if (!s) return;
-    const isLive = s.status !== 'exited' && s.status !== 'errored';
-    if (isLive) {
-      const ok = window.confirm(`Close session "${s.displayName}"?`);
-      if (!ok) return;
-      await api.kill(id);
+    setPendingResumeKey(it.key);
+    try {
+      const spawned = await api.spawn({
+        cli: it.dormant.cli,
+        cwd: it.dormant.cwd,
+        cols: 120,
+        rows: 32,
+        theme: resolveActiveTheme(),
+        spawnArgs: { resume: it.dormant.cliSessionId },
+      });
+      // onAdd handler will setActive; do it explicitly here too in case
+      // the event lost the race against the rendered snapshot.
+      setActive(spawned.id);
+    } finally {
+      setPendingResumeKey(null);
     }
-    await api.forget(id);
+  };
+
+  const handleRename = async (it: SidebarItem, title: string): Promise<void> => {
+    const api = window.agentDashboard?.sessions;
+    const id = it.isLive ? it.live?.id : it.dormant?.id;
+    if (!api || !id) return;
+    await api.rename(id, title);
+    // Live sessions get an `update` push that refreshes the store; dormant
+    // ones only touch the persistence file, so patch the store directly.
+    if (!it.isLive && it.dormant) {
+      renamePrevious(it.dormant.id, title.trim() || null);
+    }
+  };
+
+  const requestClose = (it: SidebarItem): void => {
+    if (!it.isLive) {
+      // Dormant: just drop the persistence record.
+      if (it.dormant) {
+        void window.agentDashboard?.sessions.dismissPrevious(it.dormant.id);
+        removePrevious(it.dormant.id);
+      }
+      return;
+    }
+    if (!it.live) return;
+    const isRunning = it.live.status !== 'exited' && it.live.status !== 'errored';
+    if (isRunning) {
+      setConfirmKillItem(it);
+    } else {
+      // Already-exited tabs go straight to dormant — no confirm needed.
+      void window.agentDashboard?.sessions.release(it.live.id);
+    }
+  };
+
+  const confirmCloseLive = async (): Promise<void> => {
+    const it = confirmKillItem;
+    setConfirmKillItem(null);
+    if (!it || !it.live) return;
+    const api = window.agentDashboard?.sessions;
+    if (!api) return;
+    await api.kill(it.live.id);
+    await api.release(it.live.id);
   };
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-col gap-2 p-2 pt-3">
-        <Button
-          size="md"
-          variant="primary"
-          className="w-full justify-start"
-          onClick={() => setNewSessionOpen(true)}
+      {/* Drag region that sits under macOS traffic lights. With
+          titleBarStyle=hiddenInset the lights overlay the sidebar's
+          top-left; this 48px band matches the session header height and
+          centers the 12px lights (18 + 12 + 18 = 48, via
+          BrowserWindow.trafficLightPosition in main) so the lights, the
+          header buttons and the title all sit on one line. */}
+      <div className="titlebar-drag h-12 shrink-0" />
+      <div className="flex flex-col gap-2 px-2.5 pb-2 pt-1 titlebar-no-drag">
+        <button
+          type="button"
+          onClick={() => openNewSession()}
+          className={cn(
+            'flex h-9 items-center gap-2 rounded-md border border-edge/10 bg-surface px-3',
+            'text-sm text-ink hover:border-accent/50 hover:bg-surface/80',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40',
+          )}
         >
-          + New chat
-        </Button>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search…"
-          className="h-8 rounded-md border border-edge/10 bg-sunken px-2 text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
-        />
+          <Plus className="h-4 w-4 text-muted" strokeWidth={2} />
+          <span>New chat</span>
+        </button>
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle"
+            strokeWidth={1.75}
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search"
+            className="h-9 w-full rounded-md border border-transparent bg-sunken pl-8 pr-2.5 text-sm text-ink placeholder:text-subtle focus:border-accent/40 focus:outline-none"
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-1 pb-1">
-        {visibleProjects.length > 0 && (
-          <SectionLabel>Projects</SectionLabel>
+        <SectionHeader
+          label="Projects"
+          collapsed={sectionsCollapsed.projects}
+          onToggle={() => toggleSectionCollapsed('projects')}
+          actions={
+            <>
+              {visibleProjects.length > 0 && (
+                <HeaderAction
+                  icon={Minimize2}
+                  label="Collapse all projects"
+                  onClick={collapseAllProjects}
+                />
+              )}
+              <HeaderAction
+                icon={FolderPlus}
+                label="New project session"
+                onClick={() => openNewSession('project')}
+              />
+            </>
+          }
+        />
+        {!sectionsCollapsed.projects && (
+          <div>
+            {visibleProjects.length === 0 ? (
+              <SectionEmpty>{q ? 'No matches.' : 'No project sessions yet.'}</SectionEmpty>
+            ) : (
+              visibleProjects.map((group) => {
+                const collapsed = collapsedProjects.has(group.cwd);
+                return (
+                  <div key={group.cwd} className="group/proj mb-1">
+                    <div className="flex items-center rounded pr-1 hover:bg-surface/60">
+                      <button
+                        type="button"
+                        onClick={() => toggleProject(group.cwd)}
+                        className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm text-muted"
+                        title={group.cwd}
+                      >
+                        {collapsed ? (
+                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-subtle" strokeWidth={2} />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-subtle" strokeWidth={2} />
+                        )}
+                        <span className="truncate text-ink">{basename(group.cwd)}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openNewSession('project', group.cwd);
+                        }}
+                        aria-label={`New session in ${basename(group.cwd)}`}
+                        title="New session in this project"
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-subtle opacity-0 hover:bg-canvas hover:text-ink group-hover/proj:opacity-100"
+                      >
+                        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                      </button>
+                      <span className="shrink-0 px-1 text-xs text-subtle">{group.items.length}</span>
+                    </div>
+                    {!collapsed &&
+                      group.items.map((it) => (
+                        <SessionRow
+                          key={it.key}
+                          item={it}
+                          isActive={it.live?.id === activeId}
+                          isResuming={pendingResumeKey === it.key}
+                          indent
+                          onSelect={() => void handleSelect(it)}
+                          onClose={() => requestClose(it)}
+                          onRename={(title) => void handleRename(it, title)}
+                        />
+                      ))}
+                  </div>
+                );
+              })
+            )}
+          </div>
         )}
-        {visibleProjects.map((group) => {
-          const collapsed = collapsedProjects.has(group.cwd);
-          return (
-            <div key={group.cwd} className="mb-1">
-              <button
-                type="button"
-                onClick={() => toggleProject(group.cwd)}
-                className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-xs text-muted hover:bg-surface"
-                title={group.cwd}
-              >
-                <span className="text-[9px] text-subtle">{collapsed ? '▶' : '▼'}</span>
-                <span className="truncate text-ink">{basename(group.cwd)}</span>
-                <span className="ml-auto text-subtle">{group.items.length}</span>
-              </button>
-              {!collapsed &&
-                group.items.map((s) => (
-                  <SessionRow
-                    key={s.id}
-                    session={s}
-                    isActive={s.id === activeId}
-                    indent
-                    onSelect={() => setActive(s.id)}
-                    onClose={() => void killAndForget(s.id)}
-                  />
-                ))}
-            </div>
-          );
-        })}
 
-        {visibleChats.length > 0 && <SectionLabel>Chats</SectionLabel>}
-        {visibleChats.map((s) => (
-          <SessionRow
-            key={s.id}
-            session={s}
-            isActive={s.id === activeId}
-            onSelect={() => setActive(s.id)}
-            onClose={() => void killAndForget(s.id)}
-          />
-        ))}
-
-        {visibleProjects.length === 0 && visibleChats.length === 0 && (
-          <div className="px-3 py-6 text-center text-xs text-muted">
-            {q ? 'No matches.' : (
-              <>No sessions yet.<br />Hit <kbd className="font-mono text-ink">⌘T</kbd> to start one.</>
+        <SectionHeader
+          label="Chats"
+          collapsed={sectionsCollapsed.chats}
+          onToggle={() => toggleSectionCollapsed('chats')}
+          actions={
+            <HeaderAction
+              icon={SquarePen}
+              label="New chat"
+              onClick={() => openNewSession('chat')}
+            />
+          }
+        />
+        {!sectionsCollapsed.chats && (
+          <div>
+            {visibleChats.length === 0 ? (
+              <SectionEmpty>{q ? 'No matches.' : 'No chats yet.'}</SectionEmpty>
+            ) : (
+              visibleChats.map((it) => (
+                <SessionRow
+                  key={it.key}
+                  item={it}
+                  isActive={it.live?.id === activeId}
+                  isResuming={pendingResumeKey === it.key}
+                  onSelect={() => void handleSelect(it)}
+                  onClose={() => requestClose(it)}
+                  onRename={(title) => void handleRename(it, title)}
+                />
+              ))
             )}
           </div>
         )}
@@ -153,78 +307,222 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-ink hover:bg-surface"
+          className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted hover:bg-surface/60 hover:text-ink"
         >
-          <span>⚙</span>
+          <Settings className="h-4 w-4" strokeWidth={1.75} />
           <span>Settings</span>
         </button>
+      </div>
+
+      <ConfirmDialog
+        open={confirmKillItem !== null}
+        title={`Close ${confirmKillItem?.displayName ?? 'session'}?`}
+        description={`The ${confirmKillItem?.cli} process will be terminated. The session stays resumable from this list.`}
+        confirmLabel="Close session"
+        destructive
+        onConfirm={() => void confirmCloseLive()}
+        onCancel={() => setConfirmKillItem(null)}
+      />
+    </div>
+  );
+}
+
+interface SectionHeaderProps {
+  label: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  actions?: ReactNode;
+}
+
+function SectionHeader({ label, collapsed, onToggle, actions }: SectionHeaderProps) {
+  return (
+    <div className="group/section flex items-center gap-1 px-3 pb-1 pt-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex flex-1 items-center gap-1 text-left text-[11px] font-medium uppercase tracking-wider text-subtle hover:text-muted"
+      >
+        <span>{label}</span>
+        {collapsed ? (
+          <ChevronRight className="h-3 w-3" strokeWidth={2} />
+        ) : (
+          <ChevronDown
+            className="h-3 w-3 opacity-0 transition-opacity group-hover/section:opacity-100"
+            strokeWidth={2}
+          />
+        )}
+      </button>
+      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/section:opacity-100">
+        {actions}
       </div>
     </div>
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function HeaderAction({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <div className="px-3 pb-1 pt-3 text-[10px] uppercase tracking-wider text-subtle">
-      {children}
-    </div>
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={label}
+      title={label}
+      className="flex h-5 w-5 items-center justify-center rounded text-subtle hover:bg-surface/80 hover:text-ink"
+    >
+      <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+    </button>
+  );
+}
+
+function SectionEmpty({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-3 py-2 text-xs text-subtle">{children}</div>
   );
 }
 
 interface SessionRowProps {
-  session: Session;
+  item: SidebarItem;
   isActive: boolean;
+  isResuming: boolean;
   indent?: boolean;
   onSelect: () => void;
   onClose: () => void;
+  onRename: (title: string) => void;
 }
 
-function SessionRow({ session, isActive, indent, onSelect, onClose }: SessionRowProps) {
+function SessionRow({ item, isActive, isResuming, indent, onSelect, onClose, onRename }: SessionRowProps) {
+  const dormantNotResumable = !item.isLive && !(item.dormant?.resumable ?? false);
+  const dim = !item.isLive;
+  const label = item.title || stripLeadingCli(item.displayName);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const startEditing = (): void => {
+    setDraft(item.title ?? stripLeadingCli(item.displayName));
+    setEditing(true);
+  };
+
+  const commit = (): void => {
+    setEditing(false);
+    const next = draft.trim();
+    if (next !== (item.title ?? '')) onRename(next);
+  };
   return (
     <div
       className={cn(
-        'group relative flex items-center gap-2 rounded-md py-1.5 pr-1 text-xs',
-        indent ? 'pl-6' : 'pl-2',
-        'hover:bg-surface',
-        isActive && 'bg-surface ring-1 ring-accent/40',
+        // h-9 explicit so the row height never depends on whether the
+        // close button (h-6) is rendered — hover used to jump the row
+        // from ~31px (text line-height) to 36px (close button height)
+        // and shift everything below it.
+        'group relative mt-0.5 flex h-9 items-center gap-2 rounded-md pr-1.5 pl-2.5 text-sm',
+        'hover:bg-surface/60',
+        isActive && 'bg-accent/10 text-ink',
+        dormantNotResumable && 'opacity-50',
       )}
     >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex flex-1 items-center gap-2 truncate text-left"
-        title={session.cwd}
-      >
-        <StatusDot status={session.status} confidence={session.statusConfidence} />
-        <span className="text-[9px] uppercase text-subtle">{CLI_LABEL[session.cli]}</span>
-        <span className="truncate text-ink">{stripLeadingCli(session.displayName)}</span>
-      </button>
-      <span
-        className="shrink-0 font-mono text-[10px] text-subtle group-hover:hidden"
-        title={new Date(session.lastActivityAt).toLocaleString()}
-      >
-        {timeAgo(session.lastActivityAt)}
+      {/* Indent spacer kept OUTSIDE any overflow-hidden so the dot below
+          can't get clipped by an upstream `truncate`. Was previously
+          `pl-6` on the row + dot inside the truncate button, which
+          chopped half the dot off in narrow sidebars. */}
+      {indent && <span aria-hidden className="block w-3 shrink-0" />}
+      {item.isLive && item.live ? (
+        <StatusDot
+          status={item.live.status}
+          confidence={item.live.statusConfidence}
+        />
+      ) : (
+        <span
+          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-subtle/40"
+          title="Not running — click to resume"
+        />
+      )}
+      <span className="shrink-0 font-mono text-[10px] tracking-wider text-subtle">
+        {CLI_LABEL[item.cli]}
       </span>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-subtle hover:bg-canvas hover:text-danger group-hover:flex"
-        title="Close session"
-      >
-        ✕
-      </button>
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            else if (e.key === 'Escape') setEditing(false);
+          }}
+          placeholder={stripLeadingCli(item.displayName)}
+          className="min-w-0 flex-1 rounded border border-accent/40 bg-sunken px-1.5 py-0.5 text-sm text-ink focus:outline-none"
+        />
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={onSelect}
+            onDoubleClick={startEditing}
+            disabled={isResuming || dormantNotResumable}
+            className="flex flex-1 min-w-0 items-center text-left disabled:cursor-not-allowed"
+            title={
+              dormantNotResumable
+                ? `${item.cwd} (history file no longer available)`
+                : `${item.cwd}\nDouble-click to rename`
+            }
+          >
+            <span
+              className={cn(
+                'truncate',
+                isActive ? 'text-ink' : dim ? 'text-subtle' : 'text-muted',
+                isResuming && 'italic',
+              )}
+            >
+              {isResuming ? 'Resuming…' : label}
+            </span>
+          </button>
+          <span
+            className="shrink-0 font-mono text-[11px] text-subtle group-hover:hidden"
+            title={new Date(item.lastActivityAt).toLocaleString()}
+          >
+            {timeAgo(item.lastActivityAt)}
+          </span>
+          <div className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                startEditing();
+              }}
+              aria-label={`Rename ${label}`}
+              className="flex h-6 w-6 items-center justify-center rounded text-subtle hover:bg-canvas hover:text-ink"
+            >
+              <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              aria-label={`Close ${label}`}
+              className="flex h-6 w-6 items-center justify-center rounded text-subtle hover:bg-canvas hover:text-danger"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-/**
- * Sidebar already shows the CLI badge separately, so trim the "Claude · "
- * / "Codex · " prefix that autoName puts on Chat-kind sessions to avoid
- * a redundant label.
- */
 function stripLeadingCli(name: string): string {
   return name.replace(/^(Claude|Codex)\s·\s/, '');
 }

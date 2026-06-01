@@ -93,6 +93,23 @@ describe('ClaudeAdapter.watch (JSONL → SessionUpdate)', () => {
     expect(last!.metrics!.tokensInput).toBe(1519);
     expect(last!.metrics!.tokensCached).toBe(3000);
     expect(last!.metrics!.tokensOutput).toBe(180);
+    // contextTokens is a snapshot of the LAST request's full prompt, not a
+    // sum: turn 3 = input 3 + cache_create 0 + cache_read 1500 = 1503.
+    expect(last!.metrics!.contextTokens).toBe(1503);
+    // opus-4-x runs a 1M-token window.
+    expect(last!.metrics!.contextLimit).toBe(1_000_000);
+  });
+
+  it('ignores "<synthetic>" turns: keeps the real model + context snapshot', async () => {
+    const file = join(__dirname, 'fixtures', 'claude-synthetic.jsonl');
+    const updates = await collectUpdates(file);
+    // The trailing synthetic turn (zero usage) must NOT zero out context or
+    // overwrite the model. Last model emitted stays the real one.
+    const lastModel = [...updates].reverse().find((u) => u.model !== undefined)?.model;
+    expect(lastModel).toBe('claude-opus-4-8');
+    const lastMetrics = [...updates].reverse().find((u) => u.metrics !== undefined)?.metrics;
+    expect(lastMetrics?.contextTokens).toBe(5010); // 10 + 0 + 5000, from the real turn
+    expect(lastMetrics?.contextLimit).toBe(1_000_000);
   });
 
   it('opens and closes currentTool around a tool_use → tool_result pair', async () => {
@@ -339,6 +356,16 @@ describe('encodeProjectPath', () => {
   });
   it('handles root cwd', () => {
     expect(encodeProjectPath('/')).toBe('-');
+  });
+  it('replaces spaces too (chat dirs live under "Application Support")', () => {
+    expect(encodeProjectPath('/Users/x/Library/Application Support/Tudou/chats/abc')).toBe(
+      '-Users-x-Library-Application-Support-Tudou-chats-abc',
+    );
+  });
+  it('replaces dots and keeps existing hyphens (e.g. a .claude worktree)', () => {
+    expect(encodeProjectPath('/Users/x/diggr-app/.claude/wt')).toBe(
+      '-Users-x-diggr-app--claude-wt',
+    );
   });
 });
 

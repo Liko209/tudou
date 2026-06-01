@@ -51,11 +51,32 @@ export function DragHandle({
     [orientation, current, onChange, sign],
   );
 
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const step = e.shiftKey ? 32 : 8;
+      const decKeys = orientation === 'vertical' ? ['ArrowLeft'] : ['ArrowUp'];
+      const incKeys = orientation === 'vertical' ? ['ArrowRight'] : ['ArrowDown'];
+      if (decKeys.includes(e.key)) {
+        e.preventDefault();
+        onChange(current + step * -sign);
+      } else if (incKeys.includes(e.key)) {
+        e.preventDefault();
+        onChange(current + step * sign);
+      }
+    },
+    [orientation, current, onChange, sign],
+  );
+
   return (
     <div
+      role="separator"
+      aria-orientation={orientation}
+      aria-valuenow={Math.round(current)}
+      tabIndex={0}
       onMouseDown={onMouseDown}
+      onKeyDown={onKeyDown}
       className={cn(
-        'group relative shrink-0 bg-edge/5 transition-colors hover:bg-accent/40',
+        'group relative shrink-0 bg-edge/5 transition-colors hover:bg-accent/40 focus-visible:bg-accent/60 focus-visible:outline-none',
         orientation === 'vertical' ? 'w-px cursor-col-resize' : 'h-px cursor-row-resize',
         className,
       )}

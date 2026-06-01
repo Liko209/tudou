@@ -214,13 +214,25 @@ export class CodexAdapter implements CliAdapter {
               metrics.tokensOutput =
                 numberFrom(usage.output_tokens) + numberFrom(usage.reasoning_output_tokens);
               // Codex's JSONL doesn't expose model name explicitly; default to
-              // gpt-5 for cost. Users can override later via dashboard settings.
+              // gpt-5 for cost + display. Users can override later via settings.
               metrics.estimatedCostUSD = estimateCost(
                 'gpt-5',
                 metrics.tokensInput,
                 metrics.tokensCached,
                 metrics.tokensOutput,
               );
+              update.model = 'gpt-5';
+              // Context-window occupancy: Codex reports the window size and
+              // the most recent turn's usage directly. Approximate current
+              // occupancy as the last turn's prompt (input + cached).
+              const ctxWindow = numberFrom(info?.model_context_window);
+              const lastRaw = info?.last_token_usage;
+              const last = isRecord(lastRaw) ? lastRaw : null;
+              if (ctxWindow > 0 && last) {
+                metrics.contextLimit = ctxWindow;
+                metrics.contextTokens =
+                  numberFrom(last.input_tokens) + numberFrom(last.cached_input_tokens);
+              }
               update.metrics = { ...metrics };
               touched = true;
             }

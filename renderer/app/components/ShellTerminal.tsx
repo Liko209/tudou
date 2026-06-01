@@ -6,6 +6,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
+import { useUIStore } from '../../lib/stores/ui-store';
+import { getXtermTheme } from '../../lib/xterm-theme';
+import { attachMacKeyBindings } from '../../lib/xterm-mac-keybindings';
 
 interface ShellTerminalProps {
   /** Optional cwd; defaults to home. */
@@ -20,6 +23,8 @@ interface ShellTerminalProps {
  */
 export function ShellTerminal({ cwd }: ShellTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<XTerm | null>(null);
+  const theme = useUIStore((s) => s.theme);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,6 +42,7 @@ export function ShellTerminal({ cwd }: ShellTerminalProps) {
     let resizeObserver: ResizeObserver | null = null;
     let onWindowResize: (() => void) | null = null;
     let disposed = false;
+    let resizeRaf = 0;
 
     void (async () => {
       try {
@@ -50,21 +56,20 @@ export function ShellTerminal({ cwd }: ShellTerminalProps) {
         if (disposed || !ptyId) return;
 
         term = new XTerm({
-          fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
-          fontSize: 12,
-          lineHeight: 1.2,
-          theme: {
-            background: '#0b0d12',
-            foreground: '#e6e8ee',
-            cursor: '#5b9cff',
-            cursorAccent: '#0b0d12',
-            selectionBackground: 'rgba(91, 156, 255, 0.3)',
-          },
+          fontFamily: '"JetBrains Mono", "SF Mono", Menlo, monospace',
+          fontSize: 13,
+          lineHeight: 1.25,
+          theme: getXtermTheme(),
           cursorBlink: true,
           allowProposedApi: true,
           scrollback: 2000,
           macOptionIsMeta: true,
+          // Option-drag forces a local selection even when the program turns
+          // on mouse reporting (Shift-drag also works). See Terminal.tsx.
+          macOptionClickForcesSelection: true,
+          rightClickSelectsWord: true,
         });
+        termRef.current = term;
 
         const fit = new FitAddon();
         term.loadAddon(fit);
@@ -73,12 +78,23 @@ export function ShellTerminal({ cwd }: ShellTerminalProps) {
         term.loadAddon(u11);
         term.unicode.activeVersion = '11';
         term.open(container);
+        attachMacKeyBindings(term, (data) => {
+          if (ptyId) void ptyApi.write(ptyId, data);
+        });
 
         const safeFit = (): void => {
           if (!container || container.clientWidth === 0 || container.clientHeight === 0) return;
           try {
-            fit.fit();
-            if (ptyId) void ptyApi.resize(ptyId, term!.cols, term!.rows);
+            const dims = fit.proposeDimensions();
+            if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows)) return;
+            // One column of slack so the macOS overlay scrollbar (reported
+            // width 0) doesn't cover the rightmost glyph. See Terminal.tsx.
+            const cols = Math.max(2, dims.cols - 1);
+            const rows = Math.max(1, dims.rows);
+            // Skip when unchanged — avoid redundant SIGWINCH repaints.
+            if (cols === term!.cols && rows === term!.rows) return;
+            term!.resize(cols, rows);
+            if (ptyId) void ptyApi.resize(ptyId, cols, rows);
           } catch {
             /* noop */
           }
@@ -99,9 +115,17 @@ export function ShellTerminal({ cwd }: ShellTerminalProps) {
           }
         });
 
-        onWindowResize = (): void => safeFit();
+        // Coalesce resize bursts into one fit per frame.
+        const scheduleFit = (): void => {
+          if (resizeRaf) cancelAnimationFrame(resizeRaf);
+          resizeRaf = requestAnimationFrame(() => {
+            resizeRaf = 0;
+            safeFit();
+          });
+        };
+        onWindowResize = scheduleFit;
         window.addEventListener('resize', onWindowResize);
-        resizeObserver = new ResizeObserver(safeFit);
+        resizeObserver = new ResizeObserver(scheduleFit);
         resizeObserver.observe(container);
       } catch (err) {
         if (!disposed) setError(err instanceof Error ? err.message : String(err));
@@ -110,15 +134,31 @@ export function ShellTerminal({ cwd }: ShellTerminalProps) {
 
     return () => {
       disposed = true;
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       if (onWindowResize) window.removeEventListener('resize', onWindowResize);
       resizeObserver?.disconnect();
       dataSub?.dispose();
       offData?.();
       offExit?.();
+      termRef.current = null;
       term?.dispose();
       if (ptyId) void ptyApi.kill(ptyId);
     };
   }, [cwd]);
+
+  // Live-swap xterm colors when the user toggles dark/light/system.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    const id = requestAnimationFrame(() => {
+      try {
+        term.options.theme = getXtermTheme();
+      } catch {
+        /* xterm may be mid-dispose */
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [theme]);
 
   if (error) {
     return (

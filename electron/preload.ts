@@ -11,6 +11,7 @@ import {
 import type { HookStatus } from './hook-installer';
 import type { Preferences } from './preferences';
 import type { FileEntry, FilePreview } from './files-service';
+import type { UpdaterState } from './updater';
 import type { PreviousSession, ResumableSession, Session } from '../shared/session-types';
 
 const ptyApi = {
@@ -52,10 +53,15 @@ const sessionApi = {
   kill: (id: string, signal?: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.sessionKill, id, signal),
   forget: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.sessionForget, id),
+  release: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.sessionRelease, id),
+  rename: (id: string, title: string): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.sessionRename, id, title),
   write: (id: string, data: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.sessionWrite, id, data),
   resize: (id: string, cols: number, rows: number): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.sessionResize, id, cols, rows),
+  getScrollback: (id: string): Promise<string> =>
+    ipcRenderer.invoke(IpcChannels.sessionScrollback, id),
   listResumable: (cli: CliKind, cwd: string): Promise<ResumableSession[]> =>
     ipcRenderer.invoke(IpcChannels.sessionListResumable, cli, cwd),
   listPrevious: (): Promise<PreviousSession[]> =>
@@ -120,6 +126,16 @@ const envApi = {
     `${process.env.HOME ?? '/'}/Library/Application Support/agent-dashboard/chats`,
 };
 
+const claudeApi = {
+  /**
+   * Mirror the dashboard's effective theme into ~/.claude/settings.json
+   * so any *future* Claude spawn (or resume) launches with matching
+   * chrome. Already-running Claude processes don't re-read settings.
+   */
+  setTheme: (theme: 'dark' | 'light'): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.claudeSetTheme, theme),
+};
+
 const hooksApi = {
   getStatus: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookGetStatus),
   install: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookInstall),
@@ -141,19 +157,37 @@ const filesApi = {
     ipcRenderer.invoke(IpcChannels.filesPreview, path),
 };
 
+const updatesApi = {
+  getState: (): Promise<UpdaterState> => ipcRenderer.invoke(IpcChannels.updateGetState),
+  check: (): Promise<void> => ipcRenderer.invoke(IpcChannels.updateCheck),
+  download: (): Promise<void> => ipcRenderer.invoke(IpcChannels.updateDownload),
+  install: (): Promise<void> => ipcRenderer.invoke(IpcChannels.updateInstall),
+  onState(callback: (state: UpdaterState) => void): () => void {
+    const h = (_e: unknown, s: UpdaterState): void => callback(s);
+    ipcRenderer.on(IpcChannels.updateState, h);
+    return () => {
+      ipcRenderer.off(IpcChannels.updateState, h);
+    };
+  },
+};
+
 contextBridge.exposeInMainWorld('agentDashboard', {
   version: '0.1.0-ui2',
   pty: ptyApi,
   sessions: sessionApi,
   env: envApi,
   hooks: hooksApi,
+  claude: claudeApi,
   preferences: preferencesApi,
   files: filesApi,
+  updates: updatesApi,
 });
 
 export type PtyApi = typeof ptyApi;
 export type SessionApi = typeof sessionApi;
 export type EnvApi = typeof envApi;
 export type HooksApi = typeof hooksApi;
+export type ClaudeApi = typeof claudeApi;
 export type PreferencesApi = typeof preferencesApi;
 export type FilesApi = typeof filesApi;
+export type UpdatesApi = typeof updatesApi;

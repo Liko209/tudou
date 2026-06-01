@@ -46,15 +46,15 @@ describe('sessionsStore', () => {
   it('applyUpdate merges partial fields without clobbering others', () => {
     const [s] = buildMockSessions();
     useSessionsStore.getState().upsertSession(s!);
-    useSessionsStore.getState().applyUpdate(s!.id, { status: 'idle' });
+    useSessionsStore.getState().applyUpdate(s!.id, { status: 'blocked' });
     const after = useSessionsStore.getState().sessions[s!.id]!;
-    expect(after.status).toBe('idle');
+    expect(after.status).toBe('blocked');
     expect(after.cwd).toBe(s!.cwd); // unrelated fields preserved
   });
 
   it('applyUpdate ignores unknown id silently', () => {
     expect(() =>
-      useSessionsStore.getState().applyUpdate('does-not-exist', { status: 'idle' }),
+      useSessionsStore.getState().applyUpdate('does-not-exist', { status: 'blocked' }),
     ).not.toThrow();
   });
 

@@ -1,65 +1,94 @@
 'use client';
 
 import { useState } from 'react';
+import { Info, PanelBottom, PanelLeft, PanelRight, SquarePen } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useUIStore } from '../../lib/stores/ui-store';
-import {
-  selectActiveSession,
-  useSessionsStore,
-} from '../../lib/stores/sessions-store';
+import { selectActiveSession, useSessionsStore } from '../../lib/stores/sessions-store';
+import { tildify } from '../../lib/path-helpers';
 import { StatusDot } from './StatusDot';
 import { InfoSheet } from './InfoSheet';
 
-/**
- * Top bar over the main pane. Shows the active session's status / name /
- * cwd at the left and panel-toggle / info-toggle actions at the right.
- *
- * Panel toggles are wired in P2 (right + bottom dock); ⓘ already works.
- */
 export function SessionHeader() {
   const active = useSessionsStore(selectActiveSession);
   const [infoOpen, setInfoOpen] = useState(false);
+  const leftCollapsed = useUIStore((s) => s.leftCollapsed);
+  const toggleLeft = useUIStore((s) => s.toggleLeft);
+  const openNewSession = useUIStore((s) => s.openNewSession);
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
   const bottomPanelOpen = useUIStore((s) => s.bottomPanelOpen);
   const setRightPanelOpen = useUIStore((s) => s.setRightPanelOpen);
   const setBottomPanelOpen = useUIStore((s) => s.setBottomPanelOpen);
 
+  const homeDir =
+    typeof window !== 'undefined' ? (window.agentDashboard?.env.homedir() ?? null) : null;
+
   return (
-    <header className="titlebar-drag flex h-9 shrink-0 items-center gap-2 border-b border-edge/10 bg-surface pl-3 pr-2 text-xs">
+    <header
+      className={cn(
+        // When the sidebar is collapsed, macOS traffic lights overlay
+        // the header's top-left and would otherwise sit on top of the
+        // session info. Push content right to clear them (~14px x +
+        // 3 × 12px buttons + 2 × 8px gaps + breathing room ≈ 80px).
+        // Transition matches the sidebar's width animation so the
+        // shift feels continuous, not a jump.
+        'titlebar-drag flex h-12 shrink-0 items-center gap-2 border-b border-edge/10 bg-canvas pr-1.5 text-sm',
+        'transition-[padding] duration-200 ease-out',
+        leftCollapsed ? 'pl-20' : 'pl-3',
+      )}
+    >
+      <div className="titlebar-no-drag flex items-center gap-0.5">
+        <IconButton onClick={toggleLeft} label={leftCollapsed ? 'Show sidebar' : 'Hide sidebar'}>
+          <PanelLeft className="h-4 w-4" strokeWidth={1.75} />
+        </IconButton>
+        {leftCollapsed && (
+          <IconButton onClick={() => openNewSession()} label="New chat">
+            <SquarePen className="h-4 w-4" strokeWidth={1.75} />
+          </IconButton>
+        )}
+      </div>
+
       {active ? (
-        <>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <StatusDot status={active.status} confidence={active.statusConfidence} />
-          <span className="text-ink font-medium">{active.displayName}</span>
-          <span className="text-subtle">·</span>
-          <span className="truncate font-mono text-muted">{active.cwd}</span>
-        </>
+          <span
+            className="min-w-0 max-w-[16rem] truncate font-medium text-ink"
+            title={active.title || active.displayName}
+          >
+            {active.title || active.displayName}
+          </span>
+          <span className="shrink-0 text-subtle">·</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-muted text-xs" title={active.cwd}>
+            {tildify(active.cwd, homeDir)}
+          </span>
+        </div>
       ) : (
-        <span className="text-muted">No session selected</span>
+        <span className="flex-1 text-muted">No session selected</span>
       )}
 
-      <div className="titlebar-no-drag ml-auto flex items-center gap-1">
-        <HeaderIconButton
+      <div className="titlebar-no-drag flex shrink-0 items-center gap-0.5">
+        <IconButton
           active={infoOpen}
           onClick={() => setInfoOpen((v) => !v)}
-          title="Session details"
+          label="Session details"
           disabled={!active}
         >
-          ⓘ
-        </HeaderIconButton>
-        <HeaderIconButton
+          <Info className="h-4 w-4" strokeWidth={1.75} />
+        </IconButton>
+        <IconButton
           active={bottomPanelOpen}
           onClick={() => setBottomPanelOpen(!bottomPanelOpen)}
-          title="Toggle bottom panel"
+          label="Toggle bottom panel"
         >
-          ▭
-        </HeaderIconButton>
-        <HeaderIconButton
+          <PanelBottom className="h-4 w-4" strokeWidth={1.75} />
+        </IconButton>
+        <IconButton
           active={rightPanelOpen}
           onClick={() => setRightPanelOpen(!rightPanelOpen)}
-          title="Toggle right panel"
+          label="Toggle right panel"
         >
-          ▣
-        </HeaderIconButton>
+          <PanelRight className="h-4 w-4" strokeWidth={1.75} />
+        </IconButton>
       </div>
 
       {active && <InfoSheet open={infoOpen} onClose={() => setInfoOpen(false)} session={active} />}
@@ -67,30 +96,29 @@ export function SessionHeader() {
   );
 }
 
-function HeaderIconButton({
-  children,
-  onClick,
-  title,
-  active,
-  disabled,
-}: {
+interface IconButtonProps {
   children: React.ReactNode;
   onClick: () => void;
-  title: string;
+  label: string;
   active?: boolean;
   disabled?: boolean;
-}) {
+}
+
+function IconButton({ children, onClick, label, active, disabled }: IconButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      title={title}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
       disabled={disabled}
       className={cn(
-        'flex h-6 w-6 items-center justify-center rounded text-sm text-muted',
+        'flex h-8 w-8 items-center justify-center rounded text-muted',
         'hover:bg-canvas hover:text-ink',
-        active && 'bg-canvas text-ink',
-        disabled && 'opacity-30 cursor-not-allowed',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40',
+        active && 'bg-accent/10 text-accent',
+        disabled && 'opacity-30 cursor-not-allowed hover:bg-transparent hover:text-muted',
       )}
     >
       {children}

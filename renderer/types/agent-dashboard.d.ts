@@ -4,8 +4,10 @@ import type {
   SessionApi,
   EnvApi,
   HooksApi,
+  ClaudeApi,
   PreferencesApi,
   FilesApi,
+  UpdatesApi,
 } from '../../electron/preload';
 
 declare global {
@@ -16,8 +18,10 @@ declare global {
       sessions: SessionApi;
       env: EnvApi;
       hooks: HooksApi;
+      claude: ClaudeApi;
       preferences: PreferencesApi;
       files: FilesApi;
+      updates: UpdatesApi;
     };
   }
 }

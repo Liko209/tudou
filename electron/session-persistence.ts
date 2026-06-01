@@ -16,6 +16,8 @@ export interface PersistedSession {
   cliSessionId: string | null;
   cwd: string;
   displayName: string;
+  /** User/auto title. null until seeded from the first prompt or a rename. */
+  title: string | null;
   startedAt: string;
   /** ISO timestamp used for 30-day GC at load time. */
   lastSeenAt: string;
@@ -78,8 +80,10 @@ export class SessionPersistence {
         dropped += 1;
         continue;
       }
-      this.records.set(s.id, s);
-      kept.push(s);
+      // Normalize records written before `title` existed.
+      const normalized: PersistedSession = { ...s, title: s.title ?? null };
+      this.records.set(normalized.id, normalized);
+      kept.push(normalized);
     }
     if (dropped > 0) this.writeNow();
     return kept;
@@ -170,6 +174,7 @@ function isValidSession(v: unknown): v is PersistedSession {
     (v.cliSessionId === null || typeof v.cliSessionId === 'string') &&
     typeof v.cwd === 'string' &&
     typeof v.displayName === 'string' &&
+    (v.title === undefined || v.title === null || typeof v.title === 'string') &&
     typeof v.startedAt === 'string' &&
     typeof v.lastSeenAt === 'string'
   );

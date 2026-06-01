@@ -8,10 +8,11 @@ node_modules/
 !.yarn/sdks
 !.yarn/versions
 
-# Build outputs
+# Build outputs (NOTE: `build/` is intentionally NOT ignored — it
+# holds electron-builder resources like icon.png + entitlements that
+# must ship with the repo.)
 dist/
 out/
-build/
 .next/
 *.tsbuildinfo
 
@@ -58,3 +59,7 @@ instance.json
 
 # Local Claude Code settings (per-user)
 .claude/settings.local.json
+
+# Local agent tooling / installed skills — not part of the app
+.claude/skills/
+.agents/

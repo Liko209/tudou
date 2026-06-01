@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { cn } from '../../lib/utils';
+import { resolveActiveTheme } from '../../lib/active-theme';
 import { useUIStore } from '../../lib/stores/ui-store';
 import type { CliKind } from '../../../shared/ipc-contracts';
 import type { ResumableSession } from '../../../shared/session-types';
@@ -16,6 +17,8 @@ const CLI_OPTIONS: { kind: CliKind; label: string; description: string }[] = [
 export function NewSessionModal() {
   const open = useUIStore((s) => s.newSessionOpen);
   const setOpen = useUIStore((s) => s.setNewSessionOpen);
+  const presetMode = useUIStore((s) => s.newSessionMode);
+  const presetCwd = useUIStore((s) => s.newSessionCwd);
 
   const [cli, setCli] = useState<CliKind>('claude');
   const [tieToProject, setTieToProject] = useState(false);
@@ -25,13 +28,23 @@ export function NewSessionModal() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset on open
+  // Reset on open. tieToProject defaults to ad-hoc chat (false) so
+  // generic entry points (top "New chat" button, ⌘T) land on the chat
+  // tab; sidebar "+ project" passes presetMode='project' to override.
   useEffect(() => {
     if (!open) return;
     setError(null);
     setResumeId(null);
-    setCwd((prev) => prev || (window.agentDashboard?.env.homedir() ?? ''));
-  }, [open]);
+    // A project "+" button passes the exact project dir → prefill it and lock
+    // to project mode. Otherwise keep prior cwd or fall back to home.
+    if (presetCwd) {
+      setCwd(presetCwd);
+      setTieToProject(true);
+    } else {
+      setCwd((prev) => prev || (window.agentDashboard?.env.homedir() ?? ''));
+      setTieToProject(presetMode === 'project');
+    }
+  }, [open, presetMode, presetCwd]);
 
   // Resumable list only meaningful for project mode (chats use ad-hoc dirs)
   useEffect(() => {
@@ -75,6 +88,7 @@ export function NewSessionModal() {
         cli,
         cols: 120,
         rows: 32,
+        theme: resolveActiveTheme(),
         ...(tieToProject ? { cwd } : { chat: true }),
         spawnArgs: resumeId ? { resume: resumeId } : undefined,
       });
@@ -91,36 +105,57 @@ export function NewSessionModal() {
     <Modal open={open} onClose={() => setOpen(false)} title="New chat">
       <div className="flex flex-col gap-5">
         <Field label="Agent">
-          <select
-            value={cli}
-            onChange={(e) => setCli(e.target.value as CliKind)}
-            className="w-full rounded-md border border-edge/10 bg-sunken px-2 py-1.5 text-sm text-ink focus:border-accent/60 focus:outline-none"
-          >
+          <div className="grid grid-cols-2 gap-1.5">
             {CLI_OPTIONS.map(({ kind, label, description }) => (
-              <option key={kind} value={kind}>
-                {label} — {description}
-              </option>
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setCli(kind)}
+                className={cn(
+                  'rounded-md border px-3 py-2 text-left transition-colors',
+                  cli === kind
+                    ? 'border-accent/60 bg-accent/10'
+                    : 'border-edge/10 bg-sunken hover:border-edge/30',
+                )}
+              >
+                <div className="text-sm text-ink">{label}</div>
+                <div className="mt-0.5 text-[11px] text-muted">{description}</div>
+              </button>
             ))}
-          </select>
+          </div>
         </Field>
 
-        <Field label="Working directory">
-          <label className="mb-2 flex cursor-pointer items-start gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={tieToProject}
-              onChange={(e) => setTieToProject(e.target.checked)}
-              className="mt-0.5 accent-accent"
-            />
-            <span className="text-muted">
-              <span className="text-ink">Tie to a project</span> — pick a working
-              directory so this session shows up under <span className="text-ink">Projects</span>.
-              Otherwise it lives in <span className="text-ink">Chats</span> with a
-              sandboxed scratch dir.
-            </span>
-          </label>
+        <Field label="Scope">
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setTieToProject(false)}
+              className={cn(
+                'rounded-md border px-3 py-2 text-left transition-colors',
+                !tieToProject
+                  ? 'border-accent/60 bg-accent/10'
+                  : 'border-edge/10 bg-sunken hover:border-edge/30',
+              )}
+            >
+              <div className="text-sm text-ink">Chat</div>
+              <div className="mt-0.5 text-[11px] text-muted">Ad-hoc, sandboxed dir</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTieToProject(true)}
+              className={cn(
+                'rounded-md border px-3 py-2 text-left transition-colors',
+                tieToProject
+                  ? 'border-accent/60 bg-accent/10'
+                  : 'border-edge/10 bg-sunken hover:border-edge/30',
+              )}
+            >
+              <div className="text-sm text-ink">Project</div>
+              <div className="mt-0.5 text-[11px] text-muted">Pick a working dir</div>
+            </button>
+          </div>
           {tieToProject && (
-            <div className="flex gap-2">
+            <div className="mt-2 flex gap-2">
               <input
                 type="text"
                 value={cwd}

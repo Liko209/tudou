@@ -7,14 +7,17 @@ import {
   registerHookIpc,
   registerPreferencesIpc,
   registerFilesIpc,
+  registerUpdaterIpc,
   chatsBaseDir,
 } from './ipc';
 import { SessionRegistry, setChatsBaseDir } from './session-registry';
+import { inheritShellPath } from './shell-env';
 import { SessionPersistence } from './session-persistence';
 import { PreferencesStore } from './preferences';
 import { HookServer } from './hook-server';
 import { HookInstaller } from './hook-installer';
 import { LifecycleManager } from './lifecycle-manager';
+import { initUpdater } from './updater';
 import { ClaudeAdapter } from './adapters/claude-adapter';
 import { CodexAdapter } from './adapters/codex-adapter';
 
@@ -63,8 +66,13 @@ async function createMainWindow(): Promise<BrowserWindow> {
     height: 800,
     minWidth: 960,
     minHeight: 600,
-    title: 'Agent Dashboard',
+    title: 'Tudou',
     titleBarStyle: 'hiddenInset',
+    // Vertically align the traffic lights with the header buttons + title
+    // (both centered in the 48px h-12 top bar). Tuned visually: the lights'
+    // positioning box sits lower than the 12px dot suggests, so this is a
+    // few px above dead-center math.
+    trafficLightPosition: { x: 14, y: 13 },
     backgroundColor: '#0b0d12',
     show: false,
     webPreferences: {
@@ -75,6 +83,11 @@ async function createMainWindow(): Promise<BrowserWindow> {
     },
   });
 
+  // Preferred show path — fires after the first non-empty paint, so
+  // there's no white flash. But under some launch contexts (Finder /
+  // Launchpad on macOS with packaged builds) this event doesn't fire,
+  // leaving the window invisible while the dock icon hangs. The
+  // post-load fallback below catches that case.
   window.once('ready-to-show', () => window.show());
 
   // Open external links in the user's browser, never in the app.
@@ -88,16 +101,25 @@ async function createMainWindow(): Promise<BrowserWindow> {
   registerHookIpc(hookInstaller, hookServer);
   registerPreferencesIpc(preferencesStore, sessionPersistence);
   registerFilesIpc();
+  registerUpdaterIpc();
 
   if (!lifecycle) {
     lifecycle = new LifecycleManager(window, sessionRegistry, preferencesStore);
   }
+  initUpdater(window);
 
   if (isDev) {
     await window.loadURL('http://localhost:3000');
     window.webContents.openDevTools({ mode: 'detach' });
   } else {
     await window.loadFile(join(__dirname, '..', '..', 'renderer', 'out', 'index.html'));
+  }
+
+  // Fallback show: by the time loadFile/loadURL resolves the DOM is
+  // ready, so if ready-to-show silently skipped we surface the window
+  // here. Cheap: isVisible() is a no-op on already-shown windows.
+  if (!window.isVisible() && !window.isDestroyed()) {
+    window.show();
   }
 
   return window;
@@ -117,6 +139,12 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    // Pull the user's interactive shell PATH into process.env BEFORE
+    // anything tries to resolve / spawn CLIs. Finder-launched apps
+    // otherwise only see launchd's minimal PATH and can't find claude
+    // / codex / node / git installed via nvm or brew.
+    await inheritShellPath();
+
     if (!persistenceLoaded) {
       await sessionPersistence.load();
       preferencesStore.load();

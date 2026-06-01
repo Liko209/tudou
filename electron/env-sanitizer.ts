@@ -22,12 +22,31 @@ const STRIP_PREFIXES = [
   'CODEX_PLUGIN_',
 ];
 
-export function sanitizeSpawnEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+export interface SanitizeOptions {
+  /**
+   * Active dashboard theme. When set, injects `COLORFGBG` so TUIs that
+   * sniff the host terminal's color scheme (Claude Code, fzf, vim, …)
+   * render their own chrome to match — avoiding dark reverse-video
+   * banners on a light dashboard background. The values are the de-facto
+   * convention iTerm2 / urxvt use: `fg;bg` as ANSI color indices.
+   */
+  theme?: 'dark' | 'light';
+}
+
+export function sanitizeSpawnEnv(
+  env: NodeJS.ProcessEnv,
+  opts: SanitizeOptions = {},
+): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
     if (STRIP_PREFIXES.some((prefix) => key === prefix || key.startsWith(prefix))) continue;
     out[key] = value;
+  }
+  if (opts.theme === 'light') {
+    out.COLORFGBG = '0;15'; // black fg on white bg
+  } else if (opts.theme === 'dark') {
+    out.COLORFGBG = '15;0'; // white fg on black bg
   }
   return out;
 }

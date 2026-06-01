@@ -1,7 +1,8 @@
 {
-  "name": "agent-dashboard",
+  "name": "tudou",
+  "productName": "Tudou",
   "version": "0.1.0",
-  "description": "Unified macOS dashboard for hosting AI CLI sessions (Claude Code, Codex)",
+  "description": "Multi-agent dashboard for orchestrating Claude Code, Codex, and other AI CLI sessions in one window.",
   "private": true,
   "main": "dist/electron/main.js",
   "scripts": {
@@ -13,11 +14,75 @@
     "build:next": "next build renderer",
     "build:electron": "tsc -p electron/tsconfig.json",
     "package": "npm run build && electron-builder --mac",
+    "package:arm": "npm run build && electron-builder --mac --arm64",
+    "repackage": "node scripts/repackage.mjs",
+    "release": "node scripts/release.mjs",
     "typecheck": "tsc -p electron/tsconfig.json --noEmit && tsc -p renderer/tsconfig.json --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "build": {
+    "appId": "com.tudou.app",
+    "productName": "Tudou",
+    "copyright": "Copyright © 2026 Tudou",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "renderer/out/**/*",
+      "scripts/fix-node-pty.mjs",
+      "package.json",
+      "!**/*.{ts,tsx,map}",
+      "!**/tsconfig*.json",
+      "!**/__tests__/**",
+      "!tests/**",
+      "!docs/**",
+      "!coverage/**"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/build/**",
+      "node_modules/node-pty/prebuilds/**"
+    ],
+    "afterPack": "scripts/after-pack-fix-pty.mjs",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null,
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "Tudou ${version} ${arch}",
+      "writeUpdateInfo": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Liko209",
+        "repo": "tudou",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
@@ -43,7 +108,6 @@
     "eslint-plugin-react": "^7.37.2",
     "jsdom": "^29.1.1",
     "next": "^15.1.0",
-    "node-pty": "^1.1.0",
     "postcss": "^8.5.15",
     "prettier": "^3.4.2",
     "react": "^19.0.0",
@@ -56,6 +120,11 @@
     "zustand": "^5.0.13"
   },
   "dependencies": {
-    "chokidar": "^3.6.0"
+    "chokidar": "^3.6.0",
+    "electron-updater": "^6.8.3",
+    "lucide-react": "^1.17.0",
+    "node-pty": "^1.1.0",
+    "react-markdown": "^9.1.0",
+    "remark-gfm": "^4.0.1"
   }
 }

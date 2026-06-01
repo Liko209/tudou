@@ -3,11 +3,17 @@
 import type { CliKind } from './ipc-contracts';
 
 export type SessionStatus =
+  /** Spawned, CLI still booting. */
   | 'starting'
+  /** Model is thinking or a tool is running. */
   | 'working'
+  /** Turn finished — the session is free, waiting for your next input. */
   | 'waiting'
-  | 'idle'
+  /** Stuck mid-turn: needs you to authorize a tool or make a choice. */
+  | 'blocked'
+  /** Hit an error (crash, login required, …). */
   | 'errored'
+  /** CLI process has exited. */
   | 'exited';
 
 export type StatusConfidence = 'high' | 'low';
@@ -18,6 +24,14 @@ export interface SessionMetrics {
   tokensCached: number;
   estimatedCostUSD: number | null;
   messageCount: number;
+  /**
+   * Tokens occupying the context window on the most recent request
+   * (prompt + cache), i.e. a snapshot of current context usage — NOT the
+   * cumulative tokensInput. Undefined until the CLI reports usage.
+   */
+  contextTokens?: number;
+  /** The active model's context window size, for computing % used. */
+  contextLimit?: number;
 }
 
 export interface LatestMessage {
@@ -38,7 +52,16 @@ export interface Session {
   cliSessionId: string | null;
   cwd: string;
   gitBranch: string | null;
+  /** Auto-generated base name: `<project> · HH:MM`. Stable fallback. */
   displayName: string;
+  /**
+   * User-meaningful name shown in the sidebar/tabs in preference to
+   * `displayName`. Auto-seeded from the first user prompt, then editable
+   * by the user (rename). null until seeded.
+   */
+  title: string | null;
+  /** Active model id reported by the CLI (e.g. claude-sonnet-4-5-…, gpt-5). */
+  model?: string | null;
   status: SessionStatus;
   statusConfidence: StatusConfidence;
   startedAt: string;
@@ -68,6 +91,7 @@ export interface SessionUpdate {
   latestMessage?: LatestMessage | null;
   currentTool?: CurrentTool | null;
   gitBranch?: string | null;
+  model?: string | null;
 }
 
 export interface ResumableSession {
@@ -93,6 +117,8 @@ export interface PreviousSession {
   cliSessionId: string | null;
   cwd: string;
   displayName: string;
+  /** User/auto title, carried across restarts. null if never seeded. */
+  title: string | null;
   startedAt: string;
   /** Is the underlying CLI session file still present and resumable? */
   resumable: boolean;

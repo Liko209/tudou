@@ -12,12 +12,14 @@ import {
 import type { PtyManager } from './pty-manager';
 import type { SessionRegistry } from './session-registry';
 import { resolveCliPath } from './cli-resolver';
+import { setClaudeTheme } from './claude-settings';
 import type { HookInstaller, HookStatus } from './hook-installer';
 import { buildHookScript } from './hook-installer';
 import type { HookServer } from './hook-server';
 import type { PreferencesStore, Preferences } from './preferences';
 import type { SessionPersistence } from './session-persistence';
 import { listDir, readPreview } from './files-service';
+import { checkForUpdates, downloadUpdate, getUpdaterState, installUpdate } from './updater';
 import type { Session } from '../shared/session-types';
 
 /**
@@ -104,6 +106,7 @@ export function registerSessionIpc(
         shellPath,
         spawnArgs: request.spawnArgs,
         panelOnly: request.panelOnly,
+        theme: request.theme,
       });
       return session;
     },
@@ -117,12 +120,28 @@ export function registerSessionIpc(
     registry.forget(id);
   });
 
+  ipcMain.handle(IpcChannels.sessionRelease, (_e, id: string) => {
+    registry.release(id);
+  });
+
+  ipcMain.handle(IpcChannels.sessionRename, (_e, id: string, title: string) => {
+    registry.rename(id, title);
+  });
+
   ipcMain.handle(IpcChannels.sessionWrite, (_e, id: string, data: string) => {
     registry.write(id, data);
   });
 
   ipcMain.handle(IpcChannels.sessionResize, (_e, id: string, cols: number, rows: number) => {
     registry.resize(id, cols, rows);
+  });
+
+  ipcMain.handle(IpcChannels.sessionScrollback, (_e, id: string): string => {
+    return registry.getScrollback(id);
+  });
+
+  ipcMain.handle(IpcChannels.claudeSetTheme, (_e, theme: 'dark' | 'light') => {
+    setClaudeTheme(theme);
   });
 
   ipcMain.handle(
@@ -223,4 +242,11 @@ export function registerPreferencesIpc(
 export function registerFilesIpc(): void {
   ipcMain.handle(IpcChannels.filesList, (_e, dir: string) => listDir(dir));
   ipcMain.handle(IpcChannels.filesPreview, (_e, path: string) => readPreview(path));
+}
+
+export function registerUpdaterIpc(): void {
+  ipcMain.handle(IpcChannels.updateGetState, () => getUpdaterState());
+  ipcMain.handle(IpcChannels.updateCheck, () => checkForUpdates());
+  ipcMain.handle(IpcChannels.updateDownload, () => downloadUpdate());
+  ipcMain.handle(IpcChannels.updateInstall, () => installUpdate());
 }

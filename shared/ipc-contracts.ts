@@ -38,8 +38,11 @@ export const IpcChannels = {
   sessionSpawn: 'session:spawn',
   sessionKill: 'session:kill',
   sessionForget: 'session:forget',
+  sessionRelease: 'session:release',
+  sessionRename: 'session:rename',
   sessionWrite: 'session:write',
   sessionResize: 'session:resize',
+  sessionScrollback: 'session:scrollback',
   sessionListResumable: 'session:list-resumable',
   sessionListPrevious: 'session:list-previous',
   sessionDismissPrevious: 'session:dismiss-previous',
@@ -48,6 +51,9 @@ export const IpcChannels = {
   dialogPickDirectory: 'dialog:pick-directory',
 
   // Hook installer (M7)
+  /** Sync ~/.claude/settings.json `theme` to match the dashboard. */
+  claudeSetTheme: 'claude:set-theme',
+
   hookGetStatus: 'hook:get-status',
   hookInstall: 'hook:install',
   hookUninstall: 'hook:uninstall',
@@ -62,6 +68,14 @@ export const IpcChannels = {
   // Files panel (P3)
   filesList: 'files:list',
   filesPreview: 'files:preview',
+
+  // Auto-update (electron-updater → GitHub Releases)
+  updateGetState: 'update:get-state',
+  updateCheck: 'update:check',
+  updateDownload: 'update:download',
+  updateInstall: 'update:install',
+  /** Push channel — main → renderer when the updater state changes. */
+  updateState: 'update:state',
 
   // Push channels — main → renderer.
   sessionAdd: 'session:add',
@@ -94,6 +108,13 @@ export interface SessionSpawnRequest {
   panelOnly?: boolean;
   cols: number;
   rows: number;
+  /**
+   * Active dashboard theme at spawn time. Used to set COLORFGBG in the
+   * child env so TUIs (Claude Code, Codex CLI) draw their own UI chrome
+   * in the matching mode and don't end up rendering dark reverse-video
+   * bars on a light dashboard background.
+   */
+  theme?: 'dark' | 'light';
   spawnArgs?: {
     resume?: string;
     continueLast?: boolean;

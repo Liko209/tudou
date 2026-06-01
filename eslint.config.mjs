@@ -38,6 +38,9 @@ const domGlobals = {
   React: 'readonly',
   fetch: 'readonly',
   kbd: 'readonly',
+  getComputedStyle: 'readonly',
+  requestAnimationFrame: 'readonly',
+  cancelAnimationFrame: 'readonly',
 };
 
 export default [

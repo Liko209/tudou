@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Terminal } from './Terminal';
+import { resolveActiveTheme } from '../../lib/active-theme';
 import type { CliKind } from '../../../shared/ipc-contracts';
 
 interface CliOption {
@@ -51,6 +52,7 @@ export function SideChatPanel() {
         rows: 30,
         chat: true,
         panelOnly: true,
+        theme: resolveActiveTheme(),
       });
       setSessionId(session.id);
     } catch (err) {

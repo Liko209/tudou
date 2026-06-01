@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { tildify } from '../../lib/path-helpers';
 import { timeAgo } from '../../lib/time-ago';
+import { contextUsage, formatTokens } from '../../lib/context-usage';
 import { StatusDot } from './StatusDot';
 import { Button } from '../../components/ui/Button';
 import type { Session } from '../../../shared/session-types';
@@ -31,33 +33,34 @@ export function InfoSheet({ open, onClose, session }: InfoSheetProps) {
   if (!open) return null;
 
   const m = session.metrics;
+  const usage = contextUsage(m);
   const homeDir = window.agentDashboard?.env.homedir() ?? null;
 
   return (
     <>
       <div
-        className="absolute inset-0 z-20"
+        className="absolute inset-0 z-20 bg-canvas/30"
         onClick={onClose}
         aria-hidden
       />
-      <aside className="absolute right-2 top-2 z-30 w-72 rounded-lg border border-edge/10 bg-surface p-4 shadow-2xl text-sm">
+      <aside className="absolute right-2 top-2 z-30 w-80 rounded-md border border-edge/10 bg-surface p-4 text-sm shadow-[0_8px_32px_rgb(0_0_0/0.4)]">
         <div className="mb-3 flex items-start justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <StatusDot status={session.status} confidence={session.statusConfidence} />
-              <span className="truncate font-medium text-ink">{session.displayName}</span>
+              <span className="truncate font-medium text-ink">{session.title || session.displayName}</span>
             </div>
-            <div className="mt-1 truncate font-mono text-[11px] text-muted" title={session.cwd}>
+            <div className="mt-1 truncate font-mono text-xs text-muted" title={session.cwd}>
               {tildify(session.cwd, homeDir)}
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-muted hover:text-ink"
-            title="Close"
+            aria-label="Close"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-canvas hover:text-ink"
           >
-            ✕
+            <X className="h-3.5 w-3.5" strokeWidth={2} />
           </button>
         </div>
 
@@ -68,6 +71,32 @@ export function InfoSheet({ open, onClose, session }: InfoSheetProps) {
           value={`${session.status}${session.statusConfidence === 'low' ? ' (polling)' : ''}`}
         />
         <Field label="started" value={`${timeAgo(session.startedAt)} ago`} />
+
+        {usage && (
+          <>
+            <FieldLabel>Context window</FieldLabel>
+            <div className="mt-1">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-edge/10">
+                <div
+                  className={
+                    usage.pct >= 90
+                      ? 'h-full rounded-full bg-danger'
+                      : usage.pct >= 70
+                        ? 'h-full rounded-full bg-warning'
+                        : 'h-full rounded-full bg-success'
+                  }
+                  style={{ width: `${usage.pct}%` }}
+                />
+              </div>
+              <div className="mt-1 flex justify-between font-mono text-xs text-muted">
+                <span>
+                  {formatTokens(usage.used)} / {formatTokens(usage.limit)} ({usage.pct}%)
+                </span>
+                <span>{formatTokens(usage.remaining)} free</span>
+              </div>
+            </div>
+          </>
+        )}
 
         <FieldLabel>Tokens</FieldLabel>
         <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-xs">
@@ -137,15 +166,15 @@ export function InfoSheet({ open, onClose, session }: InfoSheetProps) {
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-3 text-[10px] uppercase tracking-wider text-subtle">{children}</div>
+    <div className="mt-3 text-[11px] uppercase tracking-wider text-subtle">{children}</div>
   );
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-0.5">
-      <span className="text-[10px] uppercase tracking-wider text-subtle">{label}</span>
-      <span className={mono ? 'font-mono text-xs text-ink' : 'text-xs text-ink'}>{value}</span>
+      <span className="text-[11px] uppercase tracking-wider text-subtle">{label}</span>
+      <span className={mono ? 'font-mono text-sm text-ink' : 'text-sm text-ink'}>{value}</span>
     </div>
   );
 }
