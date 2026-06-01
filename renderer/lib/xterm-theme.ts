@@ -17,7 +17,8 @@ export function getXtermTheme(): ITheme {
   const root = document.documentElement;
   const style = getComputedStyle(root);
   const v = (name: string): string => `rgb(${style.getPropertyValue(`--${name}`).trim()})`;
-  const accentRaw = style.getPropertyValue('--accent').trim();
+  const accentRaw = style.getPropertyValue('--accent').trim(); // "37 99 235"
+  const [ar, ag, ab] = accentRaw.split(/\s+/);
 
   const isLight = root.classList.contains('theme-light');
 
@@ -26,10 +27,11 @@ export function getXtermTheme(): ITheme {
     foreground: v('ink'),
     cursor: v('accent'),
     cursorAccent: v('canvas'),
-    // A 0.3 accent overlay reads fine on the dark canvas but is nearly
-    // invisible over the near-white light canvas — raise the alpha in light
-    // mode so selections are actually visible.
-    selectionBackground: `rgba(${accentRaw} / ${isLight ? 0.45 : 0.3})`,
+    // Comma rgba — xterm's color parser does NOT accept the CSS4
+    // `rgba(R G B / A)` space/slash form, so the old selection color was
+    // invalid and rendered as nothing. Light mode also needs a higher alpha
+    // to show over the near-white canvas.
+    selectionBackground: `rgba(${ar}, ${ag}, ${ab}, ${isLight ? 0.45 : 0.35})`,
   };
 
   // ANSI palette overrides.

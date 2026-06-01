@@ -191,17 +191,17 @@ function RecentCard({
       disabled={pending}
       title={item.cwd}
       className={cn(
-        'flex flex-col gap-1 rounded-lg border border-edge/10 bg-surface p-3 text-left',
+        'flex min-w-0 flex-col gap-1 overflow-hidden rounded-lg border border-edge/10 bg-surface p-3 text-left',
         'transition-colors hover:border-accent/40 hover:bg-surface/80',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/50',
         'disabled:cursor-not-allowed disabled:opacity-60',
       )}
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="font-mono text-[10px] tracking-wider text-subtle">
+        <span className="shrink-0 font-mono text-[10px] tracking-wider text-subtle">
           {cliLabel}
         </span>
-        <span className="truncate text-sm text-ink">
+        <span className="min-w-0 truncate text-sm text-ink">
           {item.title || stripLeadingCli(item.displayName)}
         </span>
       </div>
