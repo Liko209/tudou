@@ -1,11 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
 import { LayoutGrid, PanelBottomClose, PanelRightClose } from 'lucide-react';
-import {
-  selectActiveSession,
-  useSessionsStore,
-} from '../../lib/stores/sessions-store';
 import type { PanelKind } from '../../lib/stores/ui-store';
 import { PanelPicker } from './PanelPicker';
 import { ShellTerminal } from './ShellTerminal';
@@ -20,6 +15,11 @@ interface PanelProps {
   /** Tear down the panel and return to the picker (ends a running terminal). */
   onSwitch: () => void;
   position: 'right' | 'bottom';
+  /** cwd of the owning session — fixed per panel so the PTY isn't recreated. */
+  cwd?: string;
+  /** Whether this panel is the one currently shown (vs. a hidden, kept-alive
+   *  panel belonging to a non-active session). */
+  visible?: boolean;
 }
 
 /**
@@ -28,10 +28,7 @@ interface PanelProps {
  * the slot stays mounted (see AppShell) so a terminal's process survives — and
  * a separate "change panel" button returns to the picker.
  */
-export function Panel({ kind, onPick, onClose, onSwitch, position }: PanelProps) {
-  const activeCwd = useSessionsStore((s) => selectActiveSession(s)?.cwd ?? null);
-  const cwd = useMemo(() => activeCwd ?? undefined, [activeCwd]);
-
+export function Panel({ kind, onPick, onClose, onSwitch, position, cwd, visible }: PanelProps) {
   if (kind === null) {
     return <PanelPicker onPick={onPick} onClose={onClose} />;
   }
@@ -40,7 +37,7 @@ export function Panel({ kind, onPick, onClose, onSwitch, position }: PanelProps)
     <div className="flex h-full flex-col">
       <PanelHeader label={LABEL[kind]} onClose={onClose} onSwitch={onSwitch} position={position} />
       <div className="min-h-0 flex-1">
-        {kind === 'terminal' && <ShellTerminal cwd={cwd} />}
+        {kind === 'terminal' && <ShellTerminal cwd={cwd} visible={visible} />}
         {kind === 'files' && <FilesPanel />}
         {kind === 'sidechat' && <SideChatPanel />}
       </div>

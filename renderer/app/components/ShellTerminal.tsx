@@ -14,6 +14,13 @@ import { attachMacKeyBindings } from '../../lib/xterm-mac-keybindings';
 interface ShellTerminalProps {
   /** Optional cwd; defaults to home. */
   cwd?: string;
+  /**
+   * Whether this terminal is the one currently shown. When a session is
+   * switched away its panel is hidden (display:none) but kept mounted so the
+   * PTY survives; on switch-back `visible` flips true and we refit + focus
+   * (a terminal sized while hidden reports 0×0, so it needs a re-fit).
+   */
+  visible?: boolean;
 }
 
 /**
@@ -22,9 +29,12 @@ interface ShellTerminalProps {
  * bound to a SessionRegistry session — this one talks directly to the
  * low-level pty:* IPC so it doesn't show up as a Session in the sidebar.
  */
-export function ShellTerminal({ cwd }: ShellTerminalProps) {
+export function ShellTerminal({ cwd, visible = true }: ShellTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
+  // Latest fit fn — lets the visibility effect refit without re-running the
+  // spawn effect (which is keyed only on cwd, so the PTY isn't recreated).
+  const safeFitRef = useRef<(() => void) | null>(null);
   const theme = useUIStore((s) => s.theme);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,6 +118,7 @@ export function ShellTerminal({ cwd }: ShellTerminalProps) {
             /* noop */
           }
         };
+        safeFitRef.current = safeFit;
         safeFit();
         term.focus();
 
@@ -149,11 +160,21 @@ export function ShellTerminal({ cwd }: ShellTerminalProps) {
       dataSub?.dispose();
       offData?.();
       offExit?.();
+      safeFitRef.current = null;
       termRef.current = null;
       term?.dispose();
       if (ptyId) void ptyApi.kill(ptyId);
     };
   }, [cwd]);
+
+  // On becoming visible again (session switched back to this panel), the
+  // container just regained nonzero size — refit on the next frame. No focus
+  // grab: switching sessions should leave focus on the main CLI terminal.
+  useEffect(() => {
+    if (!visible) return;
+    const id = requestAnimationFrame(() => safeFitRef.current?.());
+    return () => cancelAnimationFrame(id);
+  }, [visible]);
 
   // Live-swap xterm colors when the user toggles dark/light/system.
   useEffect(() => {

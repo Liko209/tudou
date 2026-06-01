@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Info, PanelBottom, PanelLeft, PanelRight, SquarePen } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { useUIStore } from '../../lib/stores/ui-store';
+import { useActivePanel, useUIStore } from '../../lib/stores/ui-store';
 import { selectActiveSession, useSessionsStore } from '../../lib/stores/sessions-store';
 import { tildify } from '../../lib/path-helpers';
 import { StatusDot } from './StatusDot';
@@ -15,8 +15,8 @@ export function SessionHeader() {
   const leftCollapsed = useUIStore((s) => s.leftCollapsed);
   const toggleLeft = useUIStore((s) => s.toggleLeft);
   const openNewSession = useUIStore((s) => s.openNewSession);
-  const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
-  const bottomPanelOpen = useUIStore((s) => s.bottomPanelOpen);
+  // Panels are per-session — reflect/toggle the ACTIVE session's panels.
+  const { rightOpen: rightPanelOpen, bottomOpen: bottomPanelOpen } = useActivePanel();
   const setRightPanelOpen = useUIStore((s) => s.setRightPanelOpen);
   const setBottomPanelOpen = useUIStore((s) => s.setBottomPanelOpen);
 

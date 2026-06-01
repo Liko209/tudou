@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useSessionsStore } from './sessions-store';
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
@@ -18,6 +19,29 @@ function rightPanelMax(): number {
 export type PanelKind = 'files' | 'sidechat' | 'terminal';
 export type ThemeChoice = 'dark' | 'light' | 'system';
 
+/**
+ * Dock panel state for a SINGLE session. Each session owns its own right /
+ * bottom panel (open + which kind), so switching sessions swaps the panels
+ * and — because AppShell keeps every session's panel mounted — switching back
+ * restores the exact same content, including a terminal's live process.
+ * Panel DIMENSIONS stay global (a layout preference, not per-session content).
+ */
+export interface SessionPanelState {
+  rightOpen: boolean;
+  rightKind: PanelKind | null;
+  bottomOpen: boolean;
+  bottomKind: PanelKind | null;
+}
+
+/** A session with no remembered panel state — used as the read-time default.
+ *  Stable identity so selectors returning it don't churn renders. */
+export const EMPTY_PANEL: SessionPanelState = Object.freeze({
+  rightOpen: false,
+  rightKind: null,
+  bottomOpen: false,
+  bottomKind: null,
+});
+
 const THEME_STORAGE_KEY = 'agent-dashboard.theme';
 
 function loadTheme(): ThemeChoice {
@@ -29,14 +53,14 @@ function loadTheme(): ThemeChoice {
 interface UIState {
   /** Left sidebar collapse. Cmd+\ */
   leftCollapsed: boolean;
-  /** Right dock panel (VSCode-style — squeezes main, not overlay). */
-  rightPanelOpen: boolean;
-  /** Bottom dock panel. */
-  bottomPanelOpen: boolean;
-  /** What's inside each panel; null = empty (picker shown). */
-  rightPanelKind: PanelKind | null;
-  bottomPanelKind: PanelKind | null;
-  /** Drag-resizable dimensions (px). */
+  /**
+   * Per-session dock panel state, keyed by session id. Right panel is
+   * VSCode-style (squeezes main, not overlay); bottom panel docks below.
+   * Read via `useActivePanel()` / the helpers below — components rarely touch
+   * this map directly. Pruned when a session is removed (prunePanels).
+   */
+  panels: Record<string, SessionPanelState>;
+  /** Drag-resizable dimensions (px) — global, shared across sessions. */
   sidebarWidth: number;
   rightPanelWidth: number;
   bottomPanelHeight: number;
@@ -66,10 +90,13 @@ interface UIState {
   clearToast: () => void;
   openNewSession: (mode?: 'project' | 'chat', cwd?: string) => void;
   toggleSectionCollapsed: (section: 'projects' | 'chats') => void;
+  /** All panel actions operate on the CURRENTLY ACTIVE session (no-op if none). */
   setRightPanelOpen: (open: boolean) => void;
   setBottomPanelOpen: (open: boolean) => void;
   setRightPanelKind: (kind: PanelKind | null) => void;
   setBottomPanelKind: (kind: PanelKind | null) => void;
+  /** Drop panel state for sessions no longer present (called by AppShell). */
+  prunePanels: (validIds: string[]) => void;
   setSidebarWidth: (w: number) => void;
   setRightPanelWidth: (w: number) => void;
   setBottomPanelHeight: (h: number) => void;
@@ -78,12 +105,22 @@ interface UIState {
   setSettingsOpen: (open: boolean) => void;
 }
 
-export const useUIStore = create<UIState>((set) => ({
+/** Apply a patch to the active session's panel state; no-op if no active
+ *  session. Centralizes the "find active id → merge → write back" dance. */
+function patchActivePanel(
+  set: (fn: (s: UIState) => Partial<UIState>) => void,
+  patch: Partial<SessionPanelState>,
+): void {
+  const id = useSessionsStore.getState().activeId;
+  if (!id) return;
+  set((s) => ({
+    panels: { ...s.panels, [id]: { ...(s.panels[id] ?? EMPTY_PANEL), ...patch } },
+  }));
+}
+
+export const useUIStore = create<UIState>((set, get) => ({
   leftCollapsed: false,
-  rightPanelOpen: false,
-  bottomPanelOpen: false,
-  rightPanelKind: null,
-  bottomPanelKind: null,
+  panels: {},
   sidebarWidth: 240,
   rightPanelWidth: 360,
   bottomPanelHeight: 260,
@@ -114,10 +151,20 @@ export const useUIStore = create<UIState>((set) => ({
     }
     set({ theme });
   },
-  setRightPanelOpen: (open) => set({ rightPanelOpen: open }),
-  setBottomPanelOpen: (open) => set({ bottomPanelOpen: open }),
-  setRightPanelKind: (kind) => set({ rightPanelKind: kind }),
-  setBottomPanelKind: (kind) => set({ bottomPanelKind: kind }),
+  setRightPanelOpen: (open) => patchActivePanel(set, { rightOpen: open }),
+  setBottomPanelOpen: (open) => patchActivePanel(set, { bottomOpen: open }),
+  // Opening into the picker keeps the panel open; picking a kind fills it.
+  setRightPanelKind: (kind) => patchActivePanel(set, { rightKind: kind }),
+  setBottomPanelKind: (kind) => patchActivePanel(set, { bottomKind: kind }),
+  prunePanels: (validIds) => {
+    const { panels } = get();
+    const valid = new Set(validIds);
+    const dead = Object.keys(panels).filter((id) => !valid.has(id));
+    if (dead.length === 0) return; // no change — don't churn subscribers
+    const next = { ...panels };
+    for (const id of dead) delete next[id];
+    set({ panels: next });
+  },
   setSidebarWidth: (w) => set({ sidebarWidth: clamp(w, 180, 400) }),
   setRightPanelWidth: (w) => set({ rightPanelWidth: clamp(w, 240, rightPanelMax()) }),
   setBottomPanelHeight: (h) => set({ bottomPanelHeight: clamp(h, 160, 600) }),
@@ -125,3 +172,13 @@ export const useUIStore = create<UIState>((set) => ({
   setHookModalOpen: (open) => set({ hookModalOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
 }));
+
+/**
+ * The active session's dock panel state (or EMPTY_PANEL when there's no active
+ * session / it has no remembered state). Re-renders when the active session
+ * changes or when that session's panel state changes.
+ */
+export function useActivePanel(): SessionPanelState {
+  const activeId = useSessionsStore((s) => s.activeId);
+  return useUIStore((s) => (activeId ? (s.panels[activeId] ?? EMPTY_PANEL) : EMPTY_PANEL));
+}

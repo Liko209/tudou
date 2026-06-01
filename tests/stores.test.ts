@@ -18,8 +18,7 @@ beforeEach(() => {
   useSessionsStore.setState({ sessions: {}, activeId: null });
   useUIStore.setState({
     leftCollapsed: false,
-    rightPanelOpen: false,
-    bottomPanelOpen: false,
+    panels: {},
     newSessionOpen: false,
     hookModalOpen: false,
     settingsOpen: false,
@@ -112,13 +111,34 @@ describe('uiStore', () => {
     expect(useUIStore.getState().leftCollapsed).toBe(false);
   });
 
-  it('setRightPanelOpen / setBottomPanelOpen track dock panel visibility', () => {
+  it('dock panel state is per-session (keyed on the active session)', () => {
+    const [a] = buildMockSessions();
+    useSessionsStore.setState({ sessions: { [a!.id]: a! }, activeId: a!.id });
+
     useUIStore.getState().setRightPanelOpen(true);
-    expect(useUIStore.getState().rightPanelOpen).toBe(true);
+    expect(useUIStore.getState().panels[a!.id]?.rightOpen).toBe(true);
     useUIStore.getState().setBottomPanelOpen(true);
-    expect(useUIStore.getState().bottomPanelOpen).toBe(true);
+    expect(useUIStore.getState().panels[a!.id]?.bottomOpen).toBe(true);
     useUIStore.getState().setRightPanelOpen(false);
-    expect(useUIStore.getState().rightPanelOpen).toBe(false);
+    expect(useUIStore.getState().panels[a!.id]?.rightOpen).toBe(false);
+  });
+
+  it('panel actions no-op when there is no active session', () => {
+    useSessionsStore.setState({ sessions: {}, activeId: null });
+    useUIStore.getState().setRightPanelOpen(true);
+    expect(useUIStore.getState().panels).toEqual({});
+  });
+
+  it('prunePanels drops state for sessions no longer present', () => {
+    useUIStore.setState({
+      panels: {
+        keep: { rightOpen: true, rightKind: 'terminal', bottomOpen: false, bottomKind: null },
+        gone: { rightOpen: true, rightKind: 'files', bottomOpen: false, bottomKind: null },
+      },
+    });
+    useUIStore.getState().prunePanels(['keep']);
+    const panels = useUIStore.getState().panels;
+    expect(Object.keys(panels)).toEqual(['keep']);
   });
 
   it('setNewSessionOpen toggles modal state', () => {

@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { cn } from '../../lib/utils';
-import { useUIStore } from '../../lib/stores/ui-store';
+import { EMPTY_PANEL, useActivePanel, useUIStore } from '../../lib/stores/ui-store';
+import { useSessionsStore } from '../../lib/stores/sessions-store';
 import { useSessionBridge } from '../../lib/hooks/use-session-bridge';
 import { useKeyboardShortcuts } from '../../lib/hooks/use-keyboard-shortcuts';
 import { useTheme } from '../../lib/hooks/use-theme';
@@ -20,10 +22,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 
 export function AppShell() {
   const leftCollapsed = useUIStore((s) => s.leftCollapsed);
-  const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
-  const bottomPanelOpen = useUIStore((s) => s.bottomPanelOpen);
-  const rightPanelKind = useUIStore((s) => s.rightPanelKind);
-  const bottomPanelKind = useUIStore((s) => s.bottomPanelKind);
+  const panels = useUIStore((s) => s.panels);
   const setRightPanelOpen = useUIStore((s) => s.setRightPanelOpen);
   const setRightPanelKind = useUIStore((s) => s.setRightPanelKind);
   const setBottomPanelOpen = useUIStore((s) => s.setBottomPanelOpen);
@@ -35,27 +34,46 @@ export function AppShell() {
   const setRightPanelWidth = useUIStore((s) => s.setRightPanelWidth);
   const setBottomPanelHeight = useUIStore((s) => s.setBottomPanelHeight);
 
+  // Dock panels are per-session. The active session's panel drives the
+  // open/close + sizing of the docks; every other session's panel stays
+  // mounted but hidden so its content (notably a terminal's live process)
+  // survives a switch-away-and-back.
+  const sessions = useSessionsStore((s) => s.sessions);
+  const activeId = useSessionsStore((s) => s.activeId);
+  const activePanel = useActivePanel();
+
   useSessionBridge();
   useKeyboardShortcuts();
   useTheme();
 
-  // Keep children mounted during the close transition so the panel
-  // visibly shrinks instead of snapping out — see use-animated-mount.
-  // Dock panels additionally stay mounted whenever a kind is selected, even
-  // while hidden: that keeps the terminal's PTY (and any process running in
-  // it) alive so hiding → reopening restores the exact same session instead
-  // of killing it and dropping back to the picker.
-  const leftMounted = useAnimatedMount(!leftCollapsed);
-  const rightMounted = useAnimatedMount(rightPanelOpen) || rightPanelKind !== null;
-  const bottomMounted = useAnimatedMount(bottomPanelOpen) || bottomPanelKind !== null;
+  // Forget panel state for sessions that no longer exist (their <Panel> also
+  // unmounts below, tearing down any PTY).
+  useEffect(() => {
+    useUIStore.getState().prunePanels(Object.keys(sessions));
+  }, [sessions]);
 
-  // Hide = collapse but keep the panel (and its running process) alive.
+  // Keep the sidebar mounted during its close transition so it shrinks
+  // instead of snapping out — see use-animated-mount.
+  const leftMounted = useAnimatedMount(!leftCollapsed);
+
+  // Hide = collapse but keep the active session's panel (and its running
+  // process) alive. Switch = tear down its content and return to the picker.
+  // Both act on the active session via the store.
   const closeRight = (): void => setRightPanelOpen(false);
   const closeBottom = (): void => setBottomPanelOpen(false);
-  // Switch = tear down the current panel and return to the picker. This is the
-  // explicit, destructive action (it ends a running terminal).
   const switchRight = (): void => setRightPanelKind(null);
   const switchBottom = (): void => setBottomPanelKind(null);
+
+  // Sessions whose panel must be in the DOM: anyone with a chosen kind (keep it
+  // alive), plus the active session when its panel is open but empty (so the
+  // picker shows). Only the active session's panel is ever visible.
+  const sessionIds = Object.keys(sessions);
+  const rightIds = sessionIds.filter(
+    (id) => panels[id]?.rightKind != null || (id === activeId && activePanel.rightOpen),
+  );
+  const bottomIds = sessionIds.filter(
+    (id) => panels[id]?.bottomKind != null || (id === activeId && activePanel.bottomOpen),
+  );
 
   return (
     <>
@@ -86,7 +104,7 @@ export function AppShell() {
                 <CenterPane />
               </ErrorBoundary>
             </main>
-            {rightMounted && rightPanelOpen && (
+            {activePanel.rightOpen && (
               <DragHandle
                 orientation="vertical"
                 current={rightPanelWidth}
@@ -98,24 +116,36 @@ export function AppShell() {
               className={cn(
                 'shrink-0 overflow-hidden border-l border-edge/10 bg-canvas',
                 'transition-[width] duration-200 ease-out',
-                !rightPanelOpen && 'border-l-0',
+                !activePanel.rightOpen && 'border-l-0',
               )}
-              style={{ width: rightPanelOpen ? rightPanelWidth : 0 }}
+              style={{ width: activePanel.rightOpen ? rightPanelWidth : 0 }}
             >
-              {rightMounted && (
-                <ErrorBoundary label="Right panel">
-                  <Panel
-                    position="right"
-                    kind={rightPanelKind}
-                    onPick={setRightPanelKind}
-                    onClose={closeRight}
-                    onSwitch={switchRight}
-                  />
-                </ErrorBoundary>
-              )}
+              {rightIds.map((id) => {
+                const isActive = id === activeId;
+                const kind = (panels[id] ?? EMPTY_PANEL).rightKind;
+                return (
+                  <div
+                    key={id}
+                    className="h-full w-full"
+                    style={{ display: isActive ? undefined : 'none' }}
+                  >
+                    <ErrorBoundary label="Right panel">
+                      <Panel
+                        position="right"
+                        kind={kind}
+                        cwd={sessions[id]?.cwd}
+                        visible={isActive && activePanel.rightOpen}
+                        onPick={setRightPanelKind}
+                        onClose={closeRight}
+                        onSwitch={switchRight}
+                      />
+                    </ErrorBoundary>
+                  </div>
+                );
+              })}
             </aside>
           </div>
-          {bottomMounted && bottomPanelOpen && (
+          {activePanel.bottomOpen && (
             <DragHandle
               orientation="horizontal"
               current={bottomPanelHeight}
@@ -127,21 +157,33 @@ export function AppShell() {
             className={cn(
               'shrink-0 overflow-hidden border-t border-edge/10 bg-canvas',
               'transition-[height] duration-200 ease-out',
-              !bottomPanelOpen && 'border-t-0',
+              !activePanel.bottomOpen && 'border-t-0',
             )}
-            style={{ height: bottomPanelOpen ? bottomPanelHeight : 0 }}
+            style={{ height: activePanel.bottomOpen ? bottomPanelHeight : 0 }}
           >
-            {bottomMounted && (
-              <ErrorBoundary label="Bottom panel">
-                <Panel
-                  position="bottom"
-                  kind={bottomPanelKind}
-                  onPick={setBottomPanelKind}
-                  onClose={closeBottom}
-                  onSwitch={switchBottom}
-                />
-              </ErrorBoundary>
-            )}
+            {bottomIds.map((id) => {
+              const isActive = id === activeId;
+              const kind = (panels[id] ?? EMPTY_PANEL).bottomKind;
+              return (
+                <div
+                  key={id}
+                  className="h-full w-full"
+                  style={{ display: isActive ? undefined : 'none' }}
+                >
+                  <ErrorBoundary label="Bottom panel">
+                    <Panel
+                      position="bottom"
+                      kind={kind}
+                      cwd={sessions[id]?.cwd}
+                      visible={isActive && activePanel.bottomOpen}
+                      onPick={setBottomPanelKind}
+                      onClose={closeBottom}
+                      onSwitch={switchBottom}
+                    />
+                  </ErrorBoundary>
+                </div>
+              );
+            })}
           </section>
           <StatusBar />
         </div>

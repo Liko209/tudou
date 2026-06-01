@@ -33,9 +33,15 @@ export function useKeyboardShortcuts(): void {
       if (e.code === 'KeyB') {
         e.preventDefault();
         const ui = useUIStore.getState();
-        if (e.altKey) ui.setBottomPanelOpen(!ui.bottomPanelOpen);
-        else if (e.shiftKey) ui.setRightPanelOpen(!ui.rightPanelOpen);
-        else ui.toggleLeft();
+        if (!e.altKey && !e.shiftKey) {
+          ui.toggleLeft();
+          return;
+        }
+        // Right/bottom panels are per-session — toggle the active session's.
+        const activeId = useSessionsStore.getState().activeId;
+        const panel = activeId ? ui.panels[activeId] : undefined;
+        if (e.altKey) ui.setBottomPanelOpen(!(panel?.bottomOpen ?? false));
+        else ui.setRightPanelOpen(!(panel?.rightOpen ?? false));
         return;
       }
 
