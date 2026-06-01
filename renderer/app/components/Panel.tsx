@@ -38,7 +38,7 @@ export function Panel({ kind, onPick, onClose, onSwitch, position, cwd, visible 
       <PanelHeader label={LABEL[kind]} onClose={onClose} onSwitch={onSwitch} position={position} />
       <div className="min-h-0 flex-1">
         {kind === 'terminal' && <ShellTerminal cwd={cwd} visible={visible} />}
-        {kind === 'files' && <FilesPanel />}
+        {kind === 'files' && <FilesPanel cwd={cwd} />}
         {kind === 'sidechat' && <SideChatPanel />}
       </div>
     </div>

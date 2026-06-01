@@ -20,10 +20,6 @@ import {
   TerminalSquare,
   type LucideIcon,
 } from 'lucide-react';
-import {
-  selectActiveSession,
-  useSessionsStore,
-} from '../../lib/stores/sessions-store';
 import { cn } from '../../lib/utils';
 import { basename } from '../../lib/path-helpers';
 
@@ -40,14 +36,24 @@ interface FilePreview {
   size: number;
 }
 
+interface FilesPanelProps {
+  /**
+   * Working directory this browser is rooted at — the OWNING session's cwd,
+   * passed in (not read from the active session). This keeps each per-session
+   * Files panel scoped to its own dir, so switching sessions doesn't reset a
+   * hidden panel's tree/selection. Falls back to a placeholder when absent.
+   */
+  cwd?: string;
+}
+
 /**
- * Read-only file browser scoped to the active session's cwd.
+ * Read-only file browser scoped to a session's cwd.
  * Left: filter + collapsible tree.  Right: text preview of the selected
  * file. The preview header can collapse the tree to give the file the
  * full panel width.
  */
-export function FilesPanel() {
-  const cwd = useSessionsStore((s) => selectActiveSession(s)?.cwd ?? null);
+export function FilesPanel({ cwd: cwdProp }: FilesPanelProps) {
+  const cwd = cwdProp ?? null;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [childrenByDir, setChildrenByDir] = useState<Record<string, FileEntry[]>>({});
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
@@ -139,9 +145,15 @@ export function FilesPanel() {
     );
   }
 
+  // Collapsing the tree only makes sense to give an OPEN file the full width.
+  // With nothing selected there's nothing to widen, and the only un-collapse
+  // control lives in the preview header — so always show the tree when no file
+  // is open, otherwise a collapsed-tree + no-selection state is a dead end.
+  const showTree = !treeCollapsed || !selected;
+
   return (
     <div className="flex h-full min-h-0">
-      {!treeCollapsed && (
+      {showTree && (
         <div className="flex w-[40%] min-w-[180px] max-w-[320px] flex-col border-r border-edge/5">
           <div className="shrink-0 border-b border-edge/5 p-2">
             <input
