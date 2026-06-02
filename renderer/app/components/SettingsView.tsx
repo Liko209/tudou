@@ -447,6 +447,15 @@ function UpdatesSection() {
     if (done) setPending(null);
   }, [st, pending]);
 
+  // Remember the last resolved current version. The transient 'checking' state
+  // carries no version, so without this the sub line would vanish mid-check and
+  // collapse the box — keeping it holds the layout perfectly still.
+  const versionRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const v = st && 'currentVersion' in st ? st.currentVersion : undefined;
+    if (v) versionRef.current = v;
+  }, [st]);
+
   const trigger = useCallback((action: UpdateAction, fn: () => Promise<void>) => {
     setPending(action);
     void fn().catch(() => setPending(null));
@@ -457,36 +466,41 @@ function UpdatesSection() {
   const phase = st?.phase ?? 'idle';
   const currentVersion = st && 'currentVersion' in st ? st.currentVersion : undefined;
   const targetVersion = st && 'info' in st ? st.info.version : undefined;
+  // Persisted across the version-less 'checking' state (see versionRef above).
+  const knownVersion = currentVersion ?? versionRef.current;
 
-  // Status headline + sub line, kept separate from the action buttons so the
-  // two never get crammed onto one row.
+  // Headline + sub line. CRUCIAL: title, sub, and the button row are ALWAYS
+  // rendered (sub falls back to a non-breaking space) so the card never changes
+  // height between idle / checking / up-to-date — only the text + a button
+  // spinner change. No layout jitter on "Check for updates".
+  const versionLine = knownVersion ? `Current version v${knownVersion}` : ' ';
   let title = '';
-  let sub: string | null = currentVersion ? `Current version v${currentVersion}` : null;
-  if (phase === 'idle') title = currentVersion ? `Tudou v${currentVersion}` : 'Tudou';
+  let sub = versionLine;
+  if (phase === 'idle') title = knownVersion ? `Tudou v${knownVersion}` : 'Tudou';
   else if (phase === 'checking') title = 'Checking for updates…';
   else if (phase === 'up-to-date') title = "You're on the latest version";
   else if (phase === 'available') {
     title = `Update available — v${targetVersion}`;
-    sub = currentVersion ? `You're on v${currentVersion}` : null;
+    sub = knownVersion ? `You're on v${knownVersion}` : ' ';
   } else if (phase === 'downloading') {
     title = `Downloading v${targetVersion}…`;
-    sub = null;
+    sub = ' ';
   } else if (phase === 'ready') {
     title = `v${targetVersion} ready to install`;
     sub = 'Restart to finish updating.';
   } else if (phase === 'error') {
     title = 'Update failed';
-    sub = null;
   }
 
   const percent = st && 'percent' in st ? Math.round(st.percent) : 0;
   const startingDownload = pending === 'download' && phase !== 'downloading';
+  const checking = phase === 'checking' || pending === 'check';
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <div className={cn('text-sm', phase === 'error' ? 'text-danger' : 'text-ink')}>{title}</div>
-        {sub && <div className="font-mono text-xs text-subtle">{sub}</div>}
+        <div className="font-mono text-xs text-subtle">{sub}</div>
       </div>
 
       {phase === 'downloading' && (
@@ -533,15 +547,15 @@ function UpdatesSection() {
             {pending === 'install' ? 'Restarting…' : 'Restart & install'}
           </Button>
         )}
-        {(phase === 'idle' || phase === 'up-to-date' || phase === 'error') && (
+        {(phase === 'idle' || phase === 'up-to-date' || phase === 'error' || phase === 'checking') && (
           <Button
             size="sm"
             variant="default"
-            disabled={pending !== null}
+            disabled={pending !== null || phase === 'checking'}
             onClick={() => trigger('check', () => api.check())}
           >
-            {pending === 'check' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {pending === 'check' ? 'Checking…' : 'Check for updates'}
+            {checking && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {checking ? 'Checking…' : 'Check for updates'}
           </Button>
         )}
       </div>
