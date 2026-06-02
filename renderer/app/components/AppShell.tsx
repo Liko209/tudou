@@ -18,6 +18,7 @@ import { StatusBar } from './StatusBar';
 import { DragHandle } from './DragHandle';
 import { NewSessionModal } from './NewSessionModal';
 import { HookSetupModal } from './HookSetupModal';
+import { ShortcutsModal } from './ShortcutsModal';
 import { Toast } from '../../components/ui/Toast';
 import { SettingsView } from './SettingsView';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -211,6 +212,7 @@ export function AppShell() {
       </div>
       <NewSessionModal />
       <HookSetupModal />
+      <ShortcutsModal />
       <Toast />
     </>
   );

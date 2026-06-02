@@ -18,6 +18,7 @@ import { useUIStore } from '../stores/ui-store';
  *  - ⌘T          : open New Session modal
  *  - ⌘W          : kill the active session (with confirm)
  *  - ⌘1..⌘9      : switch to the Nth session in activity-sorted order
+ *  - ⌘/          : toggle the keyboard cheat sheet
  *
  * Caught at window level with preventDefault to win over the embedded
  * xterm.js (which would otherwise pass the key into the CLI). Letter keys
@@ -69,6 +70,15 @@ export function useKeyboardShortcuts(): void {
       if (e.key === '\\') {
         e.preventDefault();
         useUIStore.getState().toggleLeft();
+        return;
+      }
+
+      // ⌘/ → toggle the keyboard cheat sheet. Match on `e.code` so it fires
+      // regardless of layout/Shift quirks around the slash key.
+      if (e.code === 'Slash') {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        ui.setShortcutsOpen(!ui.shortcutsOpen);
         return;
       }
 

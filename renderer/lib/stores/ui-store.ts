@@ -94,6 +94,8 @@ interface UIState {
   settingsOpen: boolean;
   /** Full-screen Usage view overlaying the center pane. */
   usageOpen: boolean;
+  /** Keyboard cheat-sheet overlay (⌘/). */
+  shortcutsOpen: boolean;
   theme: ThemeChoice;
   /** Transient toast message; null when nothing to show. */
   toast: string | null;
@@ -121,6 +123,7 @@ interface UIState {
   setHookModalOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setUsageOpen: (open: boolean) => void;
+  setShortcutsOpen: (open: boolean) => void;
 }
 
 /** Apply a patch to the active session's panel state; no-op if no active
@@ -148,6 +151,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   hookModalOpen: false,
   settingsOpen: false,
   usageOpen: false,
+  shortcutsOpen: false,
   theme: loadTheme(),
   toast: null,
   newSessionMode: null,
@@ -201,6 +205,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   // pane — opening one dismisses the other so they never stack.
   setSettingsOpen: (open) => set(open ? { settingsOpen: true, usageOpen: false } : { settingsOpen: false }),
   setUsageOpen: (open) => set(open ? { usageOpen: true, settingsOpen: false } : { usageOpen: false }),
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
 }));
 
 /**

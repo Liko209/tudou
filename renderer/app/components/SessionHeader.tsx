@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Info, PanelBottom, PanelLeft, PanelRight, SquarePen } from 'lucide-react';
+import { CircleHelp, Info, PanelBottom, PanelLeft, PanelRight, SquarePen } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useActivePanel, useUIStore } from '../../lib/stores/ui-store';
 import { selectActiveSession, useSessionsStore } from '../../lib/stores/sessions-store';
@@ -19,6 +19,8 @@ export function SessionHeader() {
   const { rightOpen: rightPanelOpen, bottomOpen: bottomPanelOpen } = useActivePanel();
   const setRightPanelOpen = useUIStore((s) => s.setRightPanelOpen);
   const setBottomPanelOpen = useUIStore((s) => s.setBottomPanelOpen);
+  const shortcutsOpen = useUIStore((s) => s.shortcutsOpen);
+  const setShortcutsOpen = useUIStore((s) => s.setShortcutsOpen);
 
   const homeDir =
     typeof window !== 'undefined' ? (window.agentDashboard?.env.homedir() ?? null) : null;
@@ -67,6 +69,13 @@ export function SessionHeader() {
       )}
 
       <div className="titlebar-no-drag flex shrink-0 items-center gap-0.5">
+        <IconButton
+          active={shortcutsOpen}
+          onClick={() => setShortcutsOpen(!shortcutsOpen)}
+          label="Keyboard shortcuts (⌘/)"
+        >
+          <CircleHelp className="h-4 w-4" strokeWidth={1.75} />
+        </IconButton>
         <IconButton
           active={infoOpen}
           onClick={() => setInfoOpen((v) => !v)}
