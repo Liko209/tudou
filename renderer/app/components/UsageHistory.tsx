@@ -12,7 +12,9 @@ import {
   PERIOD_LABELS,
   type UsagePeriod,
 } from '../../lib/usage-period';
+import { buildEquivalents } from '../../lib/usage-equivalents';
 import { cn } from '../../lib/utils';
+import { ActivityHeatmap } from './ActivityHeatmap';
 
 /** Trim a model id to a compact label: drop a trailing -YYYYMMDD date stamp. */
 export function shortModel(model: string): string {
@@ -102,6 +104,8 @@ export function UsageHistorySection() {
       ) : (
         <div className="flex flex-col gap-4">
           <Cards roll={roll} />
+          <Equivalents totals={data.totals} />
+          <ActivityHeatmap byDay={data.byDay} />
           <DayBars days={roll.days} />
           <div className="grid grid-cols-2 gap-4">
             <BarList
@@ -126,6 +130,29 @@ export function UsageHistorySection() {
           <TopSessions data={data} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Playful "in perspective" row — cumulative usage re-expressed as concrete,
+ *  familiar things (lifetime totals, independent of the period selector). */
+function Equivalents({ totals }: { totals: UsageHistory['totals'] }) {
+  const items = buildEquivalents(totals);
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-edge/10 bg-surface p-4">
+      <div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-subtle">
+        In perspective · all time
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {items.map((e) => (
+          <div key={e.key} className="rounded-md bg-sunken px-3 py-2.5">
+            <div className="text-[11px] text-subtle">{e.lead}</div>
+            <div className="mt-0.5 text-base font-semibold leading-tight text-ink">{e.value}</div>
+            <div className="mt-1 text-[10px] leading-tight text-subtle">{e.detail}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
