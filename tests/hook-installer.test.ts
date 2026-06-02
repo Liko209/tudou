@@ -37,7 +37,12 @@ describe('HookInstaller.getStatus', () => {
     inst.install(buildHookScript('/tmp/instance.json'));
     const status = inst.getStatus();
     expect(status.scriptInstalled).toBe(true);
-    expect(status.registeredEvents.sort()).toEqual(['Notification', 'Stop', 'UserPromptSubmit']);
+    expect(status.registeredEvents.sort()).toEqual([
+      'Notification',
+      'PermissionRequest',
+      'Stop',
+      'UserPromptSubmit',
+    ]);
     expect(status.fullyInstalled).toBe(true);
   });
 
@@ -46,10 +51,11 @@ describe('HookInstaller.getStatus', () => {
     await mkdir(home, { recursive: true });
     const inst = new HookInstaller({ claudeHome: home });
     inst.install(buildHookScript('/tmp/x'));
-    // Manually corrupt: drop UserPromptSubmit + Notification
+    // Manually corrupt: drop everything but Stop
     const settings = JSON.parse(await readFile(join(home, 'settings.json'), 'utf8'));
     delete settings.hooks.UserPromptSubmit;
     delete settings.hooks.Notification;
+    delete settings.hooks.PermissionRequest;
     await writeFile(join(home, 'settings.json'), JSON.stringify(settings));
     const status = inst.getStatus();
     expect(status.registeredEvents).toEqual(['Stop']);

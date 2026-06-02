@@ -363,20 +363,38 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     // Mark hook as wired for this session — future updates stay 'high'.
     this.hookActiveCliSessionIds.add(cliSessionId);
 
+    const prevStatus = this.sessions.get(targetId)?.status;
+
     const update: SessionUpdate = { statusConfidence: 'high' };
-    // Stop = turn finished → free / your turn ('waiting'). Notification =
-    // stuck mid-turn on a permission or choice → 'blocked'. UserPromptSubmit
-    // = model is now working on the user's input.
-    const needsUser = event === 'Stop' || event === 'Notification';
+    // Map the hook event to a status:
+    //  - Stop              → 'waiting'  (turn finished, your turn)
+    //  - UserPromptSubmit  → 'working'  (model now acting on your input)
+    //  - PermissionRequest → 'blocked'  (a permission/choice dialog appeared)
+    //  - Notification      → depends on notification_type: an idle prompt means
+    //    Claude finished and is waiting ('waiting'); anything else needing a
+    //    decision (e.g. permission_prompt) is 'blocked'.
+    //
+    // PermissionRequest is what makes 'blocked' reliable: Notification only
+    // arrives when Claude actually sends an OS notification (suppressed while
+    // the terminal is focused), so on its own it missed prompts the user was
+    // staring at — leaving the session stuck on the adapter's 'working' spinner.
     if (event === 'Stop') update.status = 'waiting';
-    else if (event === 'Notification') update.status = 'blocked';
     else if (event === 'UserPromptSubmit') update.status = 'working';
+    else if (event === 'PermissionRequest') update.status = 'blocked';
+    else if (event === 'Notification')
+      update.status = payload.notification_type === 'idle_prompt' ? 'waiting' : 'blocked';
     this.applyUpdate(targetId, update, true);
 
-    // These two hook events are the authoritative "notify now" signals —
-    // emit a dedicated event so the lifecycle manager can notify on them
-    // rather than on noisy adapter status flicker.
-    if (needsUser) {
+    // 'waiting'/'blocked' are the authoritative "notify now" signals — emit a
+    // dedicated event so the lifecycle manager can notify on them rather than on
+    // noisy adapter status flicker. Dedup only the blocked RE-FIRE: when both
+    // PermissionRequest and a Notification(permission_prompt) arrive for the same
+    // prompt, the second sees us already 'blocked' and stays quiet. A 'waiting'
+    // (Stop) always notifies — turn-end is meaningful even if the adapter had
+    // already flickered the status there.
+    const needsUser = update.status === 'waiting' || update.status === 'blocked';
+    const blockedReFire = update.status === 'blocked' && prevStatus === 'blocked';
+    if (needsUser && !blockedReFire) {
       const session = this.sessions.get(targetId);
       if (session) this.emit('attention', session);
     }
@@ -396,6 +414,14 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
   write(sessionId: string, data: string): void {
     const ptyId = this.ptyIdFor(sessionId);
     if (!ptyId) return;
+    // Responding to a permission/choice prompt clears 'blocked' immediately:
+    // the keystroke (picking an option, hitting enter) means the session is
+    // moving again. We force it through (fromHook) to beat the blocked
+    // suppression; the adapter / next hook re-confirm the status from there.
+    const session = this.sessions.get(sessionId);
+    if (session?.status === 'blocked') {
+      this.applyUpdate(sessionId, { status: 'working' }, true);
+    }
     this.pty.write(ptyId, data);
   }
 

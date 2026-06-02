@@ -400,6 +400,60 @@ describe('SessionRegistry hook-driven attention', () => {
     expect(reg.get(session.id)?.status).toBe('waiting');
   });
 
+  it('PermissionRequest blocks the session and raises attention', async () => {
+    const { reg, claude } = makeRegistry();
+    const attention: string[] = [];
+    reg.on('attention', (s) => attention.push(s.id));
+    const session = await spawnWithCliId(reg, claude, 'claude-pr');
+
+    reg.applyHookEvent({ session_id: 'claude-pr', hook_event_name: 'PermissionRequest' });
+    expect(reg.get(session.id)?.status).toBe('blocked');
+    expect(attention).toEqual([session.id]);
+  });
+
+  it('a Notification(permission_prompt) for the same prompt does not re-notify', async () => {
+    const { reg, claude } = makeRegistry();
+    const attention: string[] = [];
+    reg.on('attention', (s) => attention.push(s.id));
+    const session = await spawnWithCliId(reg, claude, 'claude-dup');
+
+    // PermissionRequest shows the dialog → blocked + notify.
+    reg.applyHookEvent({ session_id: 'claude-dup', hook_event_name: 'PermissionRequest' });
+    // When unfocused, Claude ALSO sends the OS notification → second hook for
+    // the same prompt. Already blocked, so it must stay quiet.
+    reg.applyHookEvent({
+      session_id: 'claude-dup',
+      hook_event_name: 'Notification',
+      notification_type: 'permission_prompt',
+    });
+    expect(reg.get(session.id)?.status).toBe('blocked');
+    expect(attention).toEqual([session.id]);
+  });
+
+  it('Notification(idle_prompt) means waiting, not blocked', async () => {
+    const { reg, claude } = makeRegistry();
+    const session = await spawnWithCliId(reg, claude, 'claude-idle');
+
+    reg.applyHookEvent({
+      session_id: 'claude-idle',
+      hook_event_name: 'Notification',
+      notification_type: 'idle_prompt',
+    });
+    expect(reg.get(session.id)?.status).toBe('waiting');
+  });
+
+  it('user keystrokes clear a blocked session (responding to the prompt)', async () => {
+    const { reg, claude } = makeRegistry();
+    const session = await spawnWithCliId(reg, claude, 'claude-key');
+
+    reg.applyHookEvent({ session_id: 'claude-key', hook_event_name: 'PermissionRequest' });
+    expect(reg.get(session.id)?.status).toBe('blocked');
+
+    // Picking an option / hitting enter resumes the session immediately.
+    reg.write(session.id, '1');
+    expect(reg.get(session.id)?.status).toBe('working');
+  });
+
   it('drift recovery: adopts a hook by cwd when the session_id does not match', async () => {
     const { reg, claude } = makeRegistry();
     // The dashboard captured a stale id; the hook fires with the REAL id.

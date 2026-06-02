@@ -15,7 +15,7 @@ import { inheritShellPath } from './shell-env';
 import { SessionPersistence } from './session-persistence';
 import { PreferencesStore } from './preferences';
 import { HookServer } from './hook-server';
-import { HookInstaller } from './hook-installer';
+import { HookInstaller, buildHookScript } from './hook-installer';
 import { LifecycleManager } from './lifecycle-manager';
 import { initUpdater } from './updater';
 import { ClaudeAdapter } from './adapters/claude-adapter';
@@ -99,6 +99,21 @@ async function createMainWindow(): Promise<BrowserWindow> {
   registerPtyIpc(window, ptyManager);
   registerSessionIpc(window, sessionRegistry, preferencesStore);
   registerHookIpc(hookInstaller, hookServer);
+
+  // Auto-upgrade an existing hook install in place: if the user previously
+  // installed the hook but a newer app version added events (e.g.
+  // PermissionRequest), top up ~/.claude/settings.json so the new status
+  // signals work without the user having to hit "Reinstall" manually. Only
+  // touches installs that already opted in (some events present) — never
+  // injects hooks for users who never set them up.
+  try {
+    const status = hookInstaller.getStatus();
+    if (!status.fullyInstalled && (status.scriptInstalled || status.registeredEvents.length > 0)) {
+      hookInstaller.install(buildHookScript(hookServer.instancePath));
+    }
+  } catch (err) {
+    console.error('[main] hook auto-upgrade failed:', err);
+  }
   registerPreferencesIpc(preferencesStore, sessionPersistence);
   registerFilesIpc();
   registerUpdaterIpc();

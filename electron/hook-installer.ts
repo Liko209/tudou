@@ -19,10 +19,16 @@ import {
  * is safe to run with nothing installed.
  */
 
-// Notification fires when Claude needs the user mid-turn (tool permission
-// requests, idle timeout warnings). It carries the same waiting-for-input
-// semantics as Stop for our purposes — promote both to 'waiting' status.
-const HOOK_EVENTS = ['Stop', 'UserPromptSubmit', 'Notification'] as const;
+// Events we wire into ~/.claude/settings.json:
+//  - Stop              — turn finished → 'waiting'
+//  - UserPromptSubmit  — user sent a prompt → 'working'
+//  - PermissionRequest — a permission/choice dialog appeared → 'blocked'.
+//    This is the RELIABLE "needs you" signal: it fires the instant the dialog
+//    shows, regardless of window focus.
+//  - Notification      — Claude sent an OS notification. Suppressed while the
+//    terminal is focused, so it's only a supplement to PermissionRequest (and
+//    carries the idle-prompt case). Kept for older Claude builds / coverage.
+const HOOK_EVENTS = ['Stop', 'UserPromptSubmit', 'PermissionRequest', 'Notification'] as const;
 const SENTINEL = 'agent-dashboard.sh';
 
 export type HookEvent = (typeof HOOK_EVENTS)[number];

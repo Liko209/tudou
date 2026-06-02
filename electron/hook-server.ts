@@ -11,6 +11,12 @@ export interface ClaudeHookPayload {
   session_id?: string;
   hook_event_name?: string;
   cwd?: string;
+  /**
+   * Notification subtype — only set on `Notification` events. Lets us tell a
+   * "Claude finished, waiting for you" idle prompt (→ waiting) apart from a
+   * "needs permission" prompt (→ blocked). See `applyHookEvent`.
+   */
+  notification_type?: string;
   // … claude passes more — transcript_path, etc. — we ignore them
 }
 
