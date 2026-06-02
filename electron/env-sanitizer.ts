@@ -31,6 +31,12 @@ export interface SanitizeOptions {
    * convention iTerm2 / urxvt use: `fg;bg` as ANSI color indices.
    */
   theme?: 'dark' | 'light';
+  /**
+   * User-configured env to inject into the spawned CLI (proxy + custom vars,
+   * see network-env.ts). Applied LAST so it overrides inherited/theme values —
+   * this is the GUI equivalent of the user's `export …` before launching.
+   */
+  extraEnv?: Record<string, string>;
 }
 
 export function sanitizeSpawnEnv(
@@ -47,6 +53,9 @@ export function sanitizeSpawnEnv(
     out.COLORFGBG = '0;15'; // black fg on white bg
   } else if (opts.theme === 'dark') {
     out.COLORFGBG = '15;0'; // white fg on black bg
+  }
+  if (opts.extraEnv) {
+    Object.assign(out, opts.extraEnv);
   }
   return out;
 }

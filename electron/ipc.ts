@@ -2,9 +2,12 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import {
   IpcChannels,
   type CliKind,
+  type ProxyTestRequest,
+  type ProxyTestResult,
   type PtySpawnOptions,
   type SessionDataPushPayload,
   type SessionSpawnRequest,
@@ -12,6 +15,7 @@ import {
 import type { PtyManager } from './pty-manager';
 import type { SessionRegistry } from './session-registry';
 import { resolveCliPath } from './cli-resolver';
+import { buildNetworkEnv, buildProxyTestArgs } from './network-env';
 import { setClaudeTheme } from './claude-settings';
 import type { HookInstaller, HookStatus } from './hook-installer';
 import { buildHookScript } from './hook-installer';
@@ -113,6 +117,9 @@ export function registerSessionIpc(
         spawnArgs: request.spawnArgs,
         panelOnly: request.panelOnly,
         theme: request.theme,
+        // Inject the user's proxy / custom env from saved prefs at spawn time —
+        // the GUI equivalent of `export HTTPS_PROXY=… && claude`.
+        extraEnv: buildNetworkEnv(preferences.get().network),
       });
       return session;
     },
@@ -258,6 +265,43 @@ export function registerPreferencesIpc(
     for (const rec of sessionPersistence.list()) {
       sessionPersistence.remove(rec.id);
     }
+  });
+  ipcMain.handle(
+    IpcChannels.networkTestProxy,
+    (_e, req: ProxyTestRequest): Promise<ProxyTestResult> => runProxyTest(req.url),
+  );
+}
+
+const PROXY_TEST_TIMEOUT_SEC = 8;
+
+/**
+ * Probe reachability through a proxy by shelling out to `curl` — it ships with
+ * macOS and mirrors the exact proxy code path the CLIs use, so a green result
+ * here means the spawned CLI will reach the network too. Any HTTP status proves
+ * the tunnel works; curl's `000` (or a non-zero exit) means it doesn't.
+ */
+function runProxyTest(url: string): Promise<ProxyTestResult> {
+  const trimmed = url.trim();
+  if (!trimmed) return Promise.resolve({ ok: false, error: 'Enter a proxy URL first.' });
+
+  const args = buildProxyTestArgs(trimmed, PROXY_TEST_TIMEOUT_SEC);
+  return new Promise((resolve) => {
+    execFile(
+      'curl',
+      args,
+      { timeout: (PROXY_TEST_TIMEOUT_SEC + 2) * 1000 },
+      (err, stdout, stderr) => {
+        const [codeStr, timeStr] = (stdout || '').trim().split(/\s+/);
+        const code = Number(codeStr);
+        const reachable = Number.isFinite(code) && code !== 0;
+        if (!reachable) {
+          const msg = (stderr || '').trim() || err?.message || 'No response through proxy.';
+          resolve({ ok: false, error: msg });
+          return;
+        }
+        resolve({ ok: true, status: code, ms: Math.round((Number(timeStr) || 0) * 1000) });
+      },
+    );
   });
 }
 

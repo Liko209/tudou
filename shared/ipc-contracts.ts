@@ -75,6 +75,9 @@ export const IpcChannels = {
   preferencesReset: 'preferences:reset',
   preferencesClearSessions: 'preferences:clear-sessions',
 
+  /** Test reachability through a proxy URL (used by the Network settings). */
+  networkTestProxy: 'network:test-proxy',
+
   // Files panel (P3)
   filesList: 'files:list',
   filesPreview: 'files:preview',
@@ -161,4 +164,21 @@ export interface SessionSpawnRequest {
     model?: string;
     effort?: string;
   };
+}
+
+/** Renderer → main: probe whether a proxy URL can reach the network. */
+export interface ProxyTestRequest {
+  url: string;
+}
+
+/** Result of a proxy connectivity probe. */
+export interface ProxyTestResult {
+  /** True when the probe got an HTTP response through the proxy. */
+  ok: boolean;
+  /** HTTP status code from the probe target, when reachable. */
+  status?: number;
+  /** Round-trip time in milliseconds, when reachable. */
+  ms?: number;
+  /** Human-readable failure reason when `ok` is false. */
+  error?: string;
 }

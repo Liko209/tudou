@@ -47,4 +47,33 @@ describe('sanitizeSpawnEnv', () => {
     expect(out).toEqual({ PATH: '/usr/bin' });
     expect('MAYBE_UNSET' in out).toBe(false);
   });
+
+  it('merges extraEnv (user proxy / custom vars) on top of the base env', () => {
+    const out = sanitizeSpawnEnv(
+      { PATH: '/usr/bin' },
+      { extraEnv: { HTTPS_PROXY: 'http://p:1', ANTHROPIC_BASE_URL: 'https://x' } },
+    );
+    expect(out).toEqual({
+      PATH: '/usr/bin',
+      HTTPS_PROXY: 'http://p:1',
+      ANTHROPIC_BASE_URL: 'https://x',
+    });
+  });
+
+  it('extraEnv overrides an inherited value of the same key', () => {
+    const out = sanitizeSpawnEnv(
+      { HTTPS_PROXY: 'http://inherited:1' },
+      { extraEnv: { HTTPS_PROXY: 'http://user:2' } },
+    );
+    expect(out.HTTPS_PROXY).toBe('http://user:2');
+  });
+
+  it('extraEnv is applied after theme (both coexist)', () => {
+    const out = sanitizeSpawnEnv(
+      { PATH: '/x' },
+      { theme: 'dark', extraEnv: { HTTPS_PROXY: 'http://p:1' } },
+    );
+    expect(out.COLORFGBG).toBe('15;0');
+    expect(out.HTTPS_PROXY).toBe('http://p:1');
+  });
 });

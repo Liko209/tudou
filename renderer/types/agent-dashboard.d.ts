@@ -8,6 +8,7 @@ import type {
   AppApi,
   UsageApi,
   PreferencesApi,
+  NetworkApi,
   FilesApi,
   UpdatesApi,
   SoundApi,
@@ -26,6 +27,7 @@ declare global {
       app: AppApi;
       usage: UsageApi;
       preferences: PreferencesApi;
+      network: NetworkApi;
       files: FilesApi;
       updates: UpdatesApi;
       sound: SoundApi;

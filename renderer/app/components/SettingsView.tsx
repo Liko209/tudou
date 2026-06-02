@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Loader2, Volume2 } from 'lucide-react';
+import { Check, Loader2, Plus, Trash2, Volume2, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { cn } from '../../lib/utils';
@@ -23,14 +23,27 @@ interface HookStatus {
   fullyInstalled: boolean;
 }
 
-type SectionId = 'general' | 'notifications' | 'integrations' | 'updates' | 'data';
+type SectionId =
+  | 'general'
+  | 'notifications'
+  | 'integrations'
+  | 'network'
+  | 'updates'
+  | 'data';
 const NAV: { id: SectionId; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'integrations', label: 'CLI & Hooks' },
+  { id: 'network', label: 'Network' },
   { id: 'updates', label: 'Updates' },
   { id: 'data', label: 'Data' },
 ];
+
+interface CustomEnvVar {
+  key: string;
+  value: string;
+  enabled: boolean;
+}
 
 interface Preferences {
   notifications: {
@@ -48,6 +61,14 @@ interface Preferences {
   cliPaths: {
     claude: string | null;
     codex: string | null;
+  };
+  network: {
+    proxy: {
+      enabled: boolean;
+      url: string;
+      noProxy: string;
+    };
+    customEnv: CustomEnvVar[];
   };
 }
 
@@ -384,14 +405,19 @@ export function SettingsView() {
                   </div>
                 </Group>
 
+                <Group id="network" title="Network" register={registerSection('network')}>
+                  <NetworkSection prefs={prefs} save={save} />
+                </Group>
+
                 <Group id="updates" title="Updates" register={registerSection('updates')}>
                   <UpdatesSection />
                 </Group>
 
                 <Group id="data" title="Data" register={registerSection('data')}>
                   <p className="text-xs text-subtle">
-                    Reset reverts notification, quiet-hours, and CLI-path settings to defaults.
-                    Clearing history drops persisted session records — running sessions stay alive.
+                    Reset reverts notification, quiet-hours, CLI-path, and network settings to
+                    defaults. Clearing history drops persisted session records — running sessions
+                    stay alive.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="default" onClick={() => setConfirmReset(true)}>
@@ -411,7 +437,7 @@ export function SettingsView() {
       <ConfirmDialog
         open={confirmReset}
         title="Reset preferences?"
-        description="All notification, quiet hours, and CLI path settings revert to defaults."
+        description="All notification, quiet hours, CLI path, and network settings revert to defaults."
         confirmLabel="Reset"
         destructive
         onConfirm={() => void doReset()}
@@ -435,6 +461,244 @@ export function SettingsView() {
         onConfirm={() => void window.agentDashboard?.app?.relaunch()}
         onCancel={() => setConfirmRestart(false)}
       />
+    </div>
+  );
+}
+
+type ProxyTestState =
+  | { phase: 'idle' }
+  | { phase: 'testing' }
+  | { phase: 'ok'; status: number; ms: number }
+  | { phase: 'error'; message: string };
+
+/**
+ * Proxy + custom-env configuration. The dashboard spawns claude/codex as child
+ * processes that inherit only its own env, so a user's shell proxy never reaches
+ * them. These vars get injected into every spawn — the GUI equivalent of
+ * `export HTTPS_PROXY=… && claude`.
+ */
+function NetworkSection({
+  prefs,
+  save,
+}: {
+  prefs: Preferences;
+  save: (next: Preferences) => Promise<void>;
+}) {
+  const { proxy, customEnv } = prefs.network;
+  // Local drafts so the Test button reads exactly what's in the inputs (no race
+  // with the async save), committing to prefs on blur.
+  const [url, setUrl] = useState(proxy.url);
+  const [noProxy, setNoProxy] = useState(proxy.noProxy);
+  const [test, setTest] = useState<ProxyTestState>({ phase: 'idle' });
+
+  useEffect(() => setUrl(proxy.url), [proxy.url]);
+  useEffect(() => setNoProxy(proxy.noProxy), [proxy.noProxy]);
+
+  const saveProxy = (patch: Partial<Preferences['network']['proxy']>) =>
+    void save({ ...prefs, network: { ...prefs.network, proxy: { ...proxy, ...patch } } });
+
+  const saveEnv = (next: CustomEnvVar[]) =>
+    void save({ ...prefs, network: { ...prefs.network, customEnv: next } });
+
+  const runTest = useCallback(async () => {
+    const api = window.agentDashboard?.network;
+    if (!api) return;
+    setTest({ phase: 'testing' });
+    try {
+      const r = await api.testProxy({ url });
+      setTest(
+        r.ok
+          ? { phase: 'ok', status: r.status ?? 0, ms: r.ms ?? 0 }
+          : { phase: 'error', message: r.error ?? 'Unreachable' },
+      );
+    } catch (e) {
+      setTest({ phase: 'error', message: e instanceof Error ? e.message : String(e) });
+    }
+  }, [url]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <CheckRow
+        checked={proxy.enabled}
+        onToggle={(v) => saveProxy({ enabled: v })}
+        label="Use a proxy"
+        hint="Inject proxy env vars (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY) into every Claude / Codex session this app launches."
+      />
+
+      <div className={cn('flex flex-col gap-2 pl-6', !proxy.enabled && 'opacity-50')}>
+        <BlurInput
+          label="URL"
+          value={url}
+          draft={url}
+          setDraft={setUrl}
+          disabled={!proxy.enabled}
+          placeholder="http://127.0.0.1:7890"
+          onCommit={(v) => {
+            if (v !== proxy.url) saveProxy({ url: v });
+          }}
+        />
+        <BlurInput
+          label="No proxy"
+          value={noProxy}
+          draft={noProxy}
+          setDraft={setNoProxy}
+          disabled={!proxy.enabled}
+          placeholder="localhost,127.0.0.1 (optional)"
+          onCommit={(v) => {
+            if (v !== proxy.noProxy) saveProxy({ noProxy: v });
+          }}
+        />
+
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="default"
+            disabled={!proxy.enabled || !url.trim() || test.phase === 'testing'}
+            onClick={() => void runTest()}
+          >
+            {test.phase === 'testing' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {test.phase === 'testing' ? 'Testing…' : 'Test proxy'}
+          </Button>
+          {test.phase === 'ok' && (
+            <span className="inline-flex items-center gap-1 text-xs text-success">
+              <Check className="h-3.5 w-3.5" />
+              Connected · {test.status} · {(test.ms / 1000).toFixed(1)}s
+            </span>
+          )}
+          {test.phase === 'error' && (
+            <span className="inline-flex items-center gap-1 text-xs text-danger" title={test.message}>
+              <X className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate max-w-[18rem]">{test.message}</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      <Divider />
+
+      <div className="text-[11px] font-medium uppercase tracking-wider text-subtle">
+        Custom environment variables
+      </div>
+      <p className="-mt-1 text-xs text-subtle">
+        Extra vars exported into every session (e.g. ANTHROPIC_BASE_URL, NODE_EXTRA_CA_CERTS).
+      </p>
+
+      {customEnv.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {customEnv.map((v, i) => (
+            <EnvVarRow
+              key={i}
+              entry={v}
+              onChange={(next) => saveEnv(customEnv.map((e, j) => (j === i ? next : e)))}
+              onRemove={() => saveEnv(customEnv.filter((_, j) => j !== i))}
+            />
+          ))}
+        </div>
+      )}
+
+      <div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => saveEnv([...customEnv, { key: '', value: '', enabled: true }])}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add variable
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Label + text input that commits on blur (mirrors PathRow's pattern). */
+function BlurInput({
+  label,
+  value,
+  draft,
+  setDraft,
+  onCommit,
+  placeholder,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  draft: string;
+  setDraft: (v: string) => void;
+  onCommit: (v: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="w-16 shrink-0 font-mono text-xs text-muted">{label}</span>
+      <input
+        type="text"
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          if (draft !== value) onCommit(draft);
+        }}
+        placeholder={placeholder}
+        className="flex-1 rounded-md border border-edge/10 bg-sunken px-2 py-1.5 font-mono text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none disabled:opacity-50"
+      />
+    </div>
+  );
+}
+
+/** One custom env var: [enabled][KEY]=[value][remove]. Commits on blur. */
+function EnvVarRow({
+  entry,
+  onChange,
+  onRemove,
+}: {
+  entry: CustomEnvVar;
+  onChange: (next: CustomEnvVar) => void;
+  onRemove: () => void;
+}) {
+  const [key, setKey] = useState(entry.key);
+  const [value, setValue] = useState(entry.value);
+  useEffect(() => setKey(entry.key), [entry.key]);
+  useEffect(() => setValue(entry.value), [entry.value]);
+
+  return (
+    <div className={cn('flex items-center gap-2', !entry.enabled && 'opacity-50')}>
+      <input
+        type="checkbox"
+        checked={entry.enabled}
+        onChange={(e) => onChange({ ...entry, enabled: e.target.checked })}
+        className="accent-accent"
+        aria-label="Enable variable"
+      />
+      <input
+        type="text"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        onBlur={() => {
+          if (key !== entry.key) onChange({ ...entry, key });
+        }}
+        placeholder="KEY"
+        className="w-40 shrink-0 rounded-md border border-edge/10 bg-sunken px-2 py-1.5 font-mono text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
+      />
+      <span className="font-mono text-xs text-subtle">=</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (value !== entry.value) onChange({ ...entry, value });
+        }}
+        placeholder="value"
+        className="flex-1 rounded-md border border-edge/10 bg-sunken px-2 py-1.5 font-mono text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove variable"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-danger/10 hover:text-danger"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }

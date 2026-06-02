@@ -79,6 +79,66 @@ describe('PreferencesStore', () => {
     expect(loaded.quietHours.end).toBe(DEFAULT_PREFERENCES.quietHours.end);
   });
 
+  it('persists the network section (proxy + custom env)', async () => {
+    const file = join(ROOT, 'network.json');
+    const writer = new PreferencesStore(file);
+    writer.load();
+    writer.setAll({
+      ...DEFAULT_PREFERENCES,
+      network: {
+        proxy: { enabled: true, url: 'http://127.0.0.1:7890', noProxy: 'localhost' },
+        customEnv: [{ key: 'ANTHROPIC_BASE_URL', value: 'https://x', enabled: true }],
+      },
+    });
+    const loaded = new PreferencesStore(file).load();
+    expect(loaded.network.proxy).toEqual({
+      enabled: true,
+      url: 'http://127.0.0.1:7890',
+      noProxy: 'localhost',
+    });
+    expect(loaded.network.customEnv).toEqual([
+      { key: 'ANTHROPIC_BASE_URL', value: 'https://x', enabled: true },
+    ]);
+  });
+
+  it('defaults the network section when an older file omits it', async () => {
+    const file = join(ROOT, 'no-network.json');
+    await writeFile(
+      file,
+      JSON.stringify({ version: 1, preferences: { notifications: { tray: false } } }),
+    );
+    const loaded = new PreferencesStore(file).load();
+    expect(loaded.network).toEqual(DEFAULT_PREFERENCES.network);
+  });
+
+  it('sanitizes malformed network entries', async () => {
+    const file = join(ROOT, 'bad-network.json');
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        preferences: {
+          network: {
+            proxy: { enabled: 'yes', url: 123, noProxy: null },
+            customEnv: [
+              { key: 'OK', value: 'v', enabled: true },
+              { key: 42, value: 'x', enabled: true }, // bad key → dropped
+              'garbage', // not an object → dropped
+              { key: 'NOVAL', enabled: true }, // missing value → value defaults to ''
+            ],
+          },
+        },
+      }),
+    );
+    const loaded = new PreferencesStore(file).load();
+    // proxy fields with wrong types fall back to defaults
+    expect(loaded.network.proxy).toEqual(DEFAULT_PREFERENCES.network.proxy);
+    expect(loaded.network.customEnv).toEqual([
+      { key: 'OK', value: 'v', enabled: true },
+      { key: 'NOVAL', value: '', enabled: true },
+    ]);
+  });
+
   it('reset() restores defaults and persists', async () => {
     const file = join(ROOT, 'reset.json');
     const store = new PreferencesStore(file);

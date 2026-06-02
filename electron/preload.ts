@@ -4,6 +4,8 @@ import {
   type CliKind,
   type PtyDataEvent,
   type PtyExitEvent,
+  type ProxyTestRequest,
+  type ProxyTestResult,
   type PtySpawnOptions,
   type SessionDataPushPayload,
   type SessionSpawnRequest,
@@ -186,6 +188,11 @@ const preferencesApi = {
   clearSessions: (): Promise<void> => ipcRenderer.invoke(IpcChannels.preferencesClearSessions),
 };
 
+const networkApi = {
+  testProxy: (req: ProxyTestRequest): Promise<ProxyTestResult> =>
+    ipcRenderer.invoke(IpcChannels.networkTestProxy, req),
+};
+
 const filesApi = {
   list: (dir: string): Promise<FileEntry[]> => ipcRenderer.invoke(IpcChannels.filesList, dir),
   preview: (path: string): Promise<FilePreview> =>
@@ -236,6 +243,7 @@ contextBridge.exposeInMainWorld('agentDashboard', {
   app: appApi,
   usage: usageApi,
   preferences: preferencesApi,
+  network: networkApi,
   files: filesApi,
   updates: updatesApi,
   sound: soundApi,
@@ -250,6 +258,7 @@ export type ClaudeApi = typeof claudeApi;
 export type AppApi = typeof appApi;
 export type UsageApi = typeof usageApi;
 export type PreferencesApi = typeof preferencesApi;
+export type NetworkApi = typeof networkApi;
 export type FilesApi = typeof filesApi;
 export type UpdatesApi = typeof updatesApi;
 export type SoundApi = typeof soundApi;

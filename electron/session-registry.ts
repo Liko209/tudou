@@ -83,6 +83,8 @@ export interface SpawnSessionRequest {
   panelOnly?: boolean;
   /** Forwarded to env-sanitizer → COLORFGBG so the CLI matches our theme. */
   theme?: 'dark' | 'light';
+  /** User-configured proxy / custom env to inject into the spawned CLI. */
+  extraEnv?: Record<string, string>;
 }
 
 /**
@@ -213,7 +215,7 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
       cwd: request.cwd,
       cols: request.cols,
       rows: request.rows,
-      env: sanitizeSpawnEnv(process.env, { theme: request.theme }),
+      env: sanitizeSpawnEnv(process.env, { theme: request.theme, extraEnv: request.extraEnv }),
     });
 
     // Preserve a prior session's identity when resuming: the custom/auto title

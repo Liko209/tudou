@@ -2,6 +2,11 @@ import { readFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { CliKind } from '../shared/ipc-contracts';
 import { DEFAULT_SOUND_ID, normalizeSoundId } from '../shared/sound-catalog';
+import {
+  DEFAULT_NETWORK_PREFERENCES,
+  type CustomEnvVar,
+  type NetworkPreferences,
+} from './network-env';
 
 /**
  * User-configurable preferences. Persisted synchronously like
@@ -28,6 +33,8 @@ export interface Preferences {
     claude: string | null;
     codex: string | null;
   };
+  /** Proxy + custom env injected into every spawned CLI. */
+  network: NetworkPreferences;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -47,6 +54,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     claude: null,
     codex: null,
   },
+  network: clone(DEFAULT_NETWORK_PREFERENCES),
 };
 
 interface PersistedFile {
@@ -173,6 +181,33 @@ function mergeWithDefaults(p: unknown): Preferences {
     if (p.cliPaths.codex === null || typeof p.cliPaths.codex === 'string') {
       base.cliPaths.codex = p.cliPaths.codex as string | null;
     }
+  }
+  if (isRecord(p.network)) {
+    base.network = mergeNetwork(p.network);
+  }
+  return base;
+}
+
+function mergeNetwork(n: Record<string, unknown>): NetworkPreferences {
+  const base = clone(DEFAULT_NETWORK_PREFERENCES);
+  if (isRecord(n.proxy)) {
+    if (typeof n.proxy.enabled === 'boolean') base.proxy.enabled = n.proxy.enabled;
+    if (typeof n.proxy.url === 'string') base.proxy.url = n.proxy.url;
+    if (typeof n.proxy.noProxy === 'string') base.proxy.noProxy = n.proxy.noProxy;
+  }
+  if (Array.isArray(n.customEnv)) {
+    base.customEnv = n.customEnv.flatMap((e): CustomEnvVar[] => {
+      // Drop anything that isn't a well-formed entry; coerce missing optional
+      // fields to sensible defaults so a partial row survives a round-trip.
+      if (!isRecord(e) || typeof e.key !== 'string') return [];
+      return [
+        {
+          key: e.key,
+          value: typeof e.value === 'string' ? e.value : '',
+          enabled: typeof e.enabled === 'boolean' ? e.enabled : true,
+        },
+      ];
+    });
   }
   return base;
 }
