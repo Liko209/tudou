@@ -1,7 +1,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import type { UsageHistory } from '../shared/usage-types';
+import type { UsageHistory, SessionUsage } from '../shared/usage-types';
 import {
   finalizeHistory,
   foldClaudeLine,
@@ -71,6 +71,7 @@ export async function scanClaudeUsage(claudeHome = join(homedir(), '.claude')): 
   }
 
   const seen = new Set<string>();
+  const sessions: SessionUsage[] = [];
   for (const dirName of projectDirs) {
     const dir = join(projectsDir, dirName);
     let files: string[] = [];
@@ -97,6 +98,10 @@ export async function scanClaudeUsage(claudeHome = join(homedir(), '.claude')): 
         fileCache.set(path, { mtimeMs: st.mtimeMs, size: st.size, acc });
       }
       mergeAccumulator(total, acc);
+      // Each transcript file is one session — summarize it for the costliest list.
+      if (acc.totals.messages > 0) {
+        sessions.push(sessionFromFile(file.replace(/\.jsonl$/, ''), acc));
+      }
     }
   }
 
@@ -105,7 +110,26 @@ export async function scanClaudeUsage(claudeHome = join(homedir(), '.claude')): 
     if (!seen.has(key)) fileCache.delete(key);
   }
 
-  return finalizeHistory(total, new Date().toISOString());
+  const history = finalizeHistory(total, new Date().toISOString());
+  history.sessionCount = sessions.length;
+  history.sessions = sessions.sort((a, b) => b.costUSD - a.costUSD).slice(0, 8);
+  return history;
+}
+
+/** Derive a per-session summary from one transcript file's accumulator. */
+function sessionFromFile(id: string, acc: UsageAccumulator): SessionUsage {
+  // Dominant project (by cost) and most recent day in the file.
+  let project = '';
+  let topCost = -1;
+  for (const [p, t] of acc.byProject) {
+    if (t.costUSD > topCost) {
+      topCost = t.costUSD;
+      project = p;
+    }
+  }
+  let date = '';
+  for (const d of acc.byDay.keys()) if (d > date) date = d;
+  return { id, project, date, ...acc.totals };
 }
 
 /** Test hook: clear the per-file cache. */

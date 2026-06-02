@@ -51,6 +51,16 @@ describe('scanClaudeUsage', () => {
     expect(h.totals.costUSD).toBeGreaterThan(0);
   });
 
+  it('summarizes per-session (per-file) usage, costliest first', async () => {
+    const home = await makeClaudeHome();
+    const h = await scanClaudeUsage(home);
+    expect(h.sessionCount).toBe(2); // s1.jsonl + s2.jsonl
+    expect(h.sessions[0]!.id).toBe('s1'); // opus, pricier
+    expect(h.sessions[0]!.project).toBe('/Users/x/proj-a');
+    expect(h.sessions[0]!.date).toBe('2026-06-02'); // most recent day in the file
+    expect(h.sessions.every((s) => s.costUSD > 0)).toBe(true);
+  });
+
   it('returns empty history when there is no projects dir', async () => {
     const home = await mkdtemp(join(tmpdir(), 'tudou-usage-empty-'));
     const h = await scanClaudeUsage(home);

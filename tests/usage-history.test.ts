@@ -93,6 +93,25 @@ describe('mergeAccumulator + finalizeHistory', () => {
     expect(h.generatedAt).toBe('2026-06-02T12:00:00Z');
   });
 
+  it('emits day-granular model/project rollups', () => {
+    const acc = newAccumulator();
+    foldClaudeLine(acc, assistantLine({ ts: '2026-06-01T10:00:00Z', model: 'claude-opus-4-7', input: 100, output: 10 }), '/p/a');
+    foldClaudeLine(acc, assistantLine({ ts: '2026-06-02T10:00:00Z', model: 'claude-opus-4-7', input: 200, output: 20 }), '/p/a');
+    const h = finalizeHistory(acc, '2026-06-02T12:00:00Z');
+    const md = h.modelByDay.find((m) => m.date === '2026-06-02' && m.model === 'claude-opus-4-7');
+    expect(md!.tokensInput).toBe(200);
+    expect(h.modelByDay).toHaveLength(2); // one per (day, model)
+    const pd = h.projectByDay.find((p) => p.date === '2026-06-01' && p.project === '/p/a');
+    expect(pd!.tokensInput).toBe(100);
+  });
+
+  it('handles projects containing spaces in the day-granular key', () => {
+    const acc = newAccumulator();
+    foldClaudeLine(acc, assistantLine({ ts: '2026-06-01T10:00:00Z', model: 'claude-opus-4-7', input: 5, output: 1 }), '/Users/x/My Project');
+    const h = finalizeHistory(acc, '2026-06-01T12:00:00Z');
+    expect(h.projectByDay[0]).toMatchObject({ date: '2026-06-01', project: '/Users/x/My Project' });
+  });
+
   it('caps byProject to topProjects', () => {
     const acc = newAccumulator();
     for (let i = 0; i < 20; i++) {

@@ -1,12 +1,17 @@
 import { estimateCost } from './adapters/cost-calculator';
 import type {
   DailyUsage,
+  ModelDayUsage,
   ModelUsage,
+  ProjectDayUsage,
   ProjectUsage,
   UsageHistory,
   UsageTotals,
 } from '../shared/usage-types';
 
+// Composite-key separator for (day, model) / (day, project) maps — a NUL byte
+// can't appear in a date, model id, or filesystem path.
+const SEP = '\u0000';
 /**
  * Pure aggregation for historical usage. The scanner streams parsed JSONL
  * objects through `foldClaudeLine`; `finalizeHistory` turns the accumulator
@@ -17,6 +22,9 @@ export interface UsageAccumulator {
   byDay: Map<string, UsageTotals>;
   byModel: Map<string, UsageTotals>;
   byProject: Map<string, UsageTotals>;
+  /** Keyed `${day}${SEP}${model}` and `${day}${SEP}${project}` for period rollups. */
+  byDayModel: Map<string, UsageTotals>;
+  byDayProject: Map<string, UsageTotals>;
   totals: UsageTotals;
 }
 
@@ -25,7 +33,14 @@ function emptyTotals(): UsageTotals {
 }
 
 export function newAccumulator(): UsageAccumulator {
-  return { byDay: new Map(), byModel: new Map(), byProject: new Map(), totals: emptyTotals() };
+  return {
+    byDay: new Map(),
+    byModel: new Map(),
+    byProject: new Map(),
+    byDayModel: new Map(),
+    byDayProject: new Map(),
+    totals: emptyTotals(),
+  };
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -75,9 +90,12 @@ export function foldClaudeLine(acc: UsageAccumulator, parsed: unknown, project: 
       : 'unknown';
 
   const delta = { tokensInput, tokensOutput, tokensCached, costUSD };
+  const modelKey = model ?? 'unknown';
   addInto(acc.byDay, day, delta);
-  addInto(acc.byModel, model ?? 'unknown', delta);
+  addInto(acc.byModel, modelKey, delta);
   addInto(acc.byProject, project, delta);
+  addInto(acc.byDayModel, `${day}${SEP}${modelKey}`, delta);
+  addInto(acc.byDayProject, `${day}${SEP}${project}`, delta);
 
   acc.totals.tokensInput += tokensInput;
   acc.totals.tokensOutput += tokensOutput;
@@ -102,6 +120,8 @@ export function mergeAccumulator(into: UsageAccumulator, from: UsageAccumulator)
   mergeMap(into.byDay, from.byDay);
   mergeMap(into.byModel, from.byModel);
   mergeMap(into.byProject, from.byProject);
+  mergeMap(into.byDayModel, from.byDayModel);
+  mergeMap(into.byDayProject, from.byDayProject);
   into.totals.tokensInput += from.totals.tokensInput;
   into.totals.tokensOutput += from.totals.tokensOutput;
   into.totals.tokensCached += from.totals.tokensCached;
@@ -125,5 +145,26 @@ export function finalizeHistory(
     .sort((a, b) => b.costUSD - a.costUSD || b.tokensInput - a.tokensInput)
     .slice(0, topProjects);
 
-  return { generatedAt, totals: { ...acc.totals }, byDay, byModel, byProject };
+  const modelByDay: ModelDayUsage[] = [...acc.byDayModel.entries()].map(([key, t]) => {
+    const i = key.indexOf(SEP);
+    return { date: key.slice(0, i), model: key.slice(i + 1), ...t };
+  });
+  const projectByDay: ProjectDayUsage[] = [...acc.byDayProject.entries()].map(([key, t]) => {
+    const i = key.indexOf(SEP);
+    return { date: key.slice(0, i), project: key.slice(i + 1), ...t };
+  });
+
+  // sessions / sessionCount are per-file (per-transcript) and filled in by the
+  // scanner; finalize works purely from the accumulator.
+  return {
+    generatedAt,
+    totals: { ...acc.totals },
+    sessionCount: 0,
+    byDay,
+    byModel,
+    byProject,
+    modelByDay,
+    projectByDay,
+    sessions: [],
+  };
 }

@@ -62,6 +62,16 @@ Model pricing + context limits live in `electron/adapters/cost-calculator.ts`.
 - Scanner FS enumeration: a small temp-dir fixture test (read-only).
 - UI: no snapshot tests; rely on typecheck + manual smoke (the `run` skill).
 
+## M4 — richer analytics (CodeBurn-inspired)
+
+- [x] M4a — period switcher (Today/7d/30d/All) + richer cards (cache-hit %,
+  burn rate + 30-day projection) + hover-readout daily-cost chart + costliest
+  sessions. Scan now emits day-granular model/project rollups + per-session
+  summaries; `rollupPeriod` (pure, tested) slices to a window.
+- [ ] M4b — tool & task-category breakdown (parse tool_use; deterministic
+  13-category classification by tool patterns + keywords).
+- [ ] (later) budget/subscription tracking; one-shot/retry & yield; optimize.
+
 ## Status
 
 - [x] M1 — live aggregate view (full-screen, sidebar entry, summarizeUsage + tests)

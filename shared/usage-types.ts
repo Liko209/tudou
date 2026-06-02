@@ -43,14 +43,38 @@ export interface RateLimits {
   sevenDay?: RateLimitWindow;
 }
 
+export interface ModelDayUsage extends UsageTotals {
+  date: string;
+  model: string;
+}
+export interface ProjectDayUsage extends UsageTotals {
+  date: string;
+  project: string;
+}
+export interface SessionUsage extends UsageTotals {
+  /** Session id (transcript file stem). */
+  id: string;
+  project: string;
+  /** Most recent activity day, YYYY-MM-DD. */
+  date: string;
+}
+
 export interface UsageHistory {
   /** ISO timestamp the scan finished. */
   generatedAt: string;
   totals: UsageTotals;
+  /** Number of transcript files (sessions) with usage. */
+  sessionCount: number;
   /** Per calendar day, ascending. */
   byDay: DailyUsage[];
-  /** Per model, by cost descending. */
+  /** Per model, by cost descending (all-time). */
   byModel: ModelUsage[];
-  /** Per project, by cost descending (top N). */
+  /** Per project, by cost descending (top N, all-time). */
   byProject: ProjectUsage[];
+  /** Per (day, model) — lets the renderer roll up by any period. */
+  modelByDay: ModelDayUsage[];
+  /** Per (day, project) — lets the renderer roll up by any period. */
+  projectByDay: ProjectDayUsage[];
+  /** Costliest sessions, by cost descending (top N). */
+  sessions: SessionUsage[];
 }
