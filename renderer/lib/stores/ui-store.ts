@@ -17,7 +17,7 @@ function rightPanelMax(): number {
 }
 
 export type PanelKind = 'files' | 'sidechat' | 'terminal';
-export type ThemeChoice = 'dark' | 'light' | 'system';
+export type ThemeChoice = 'dark' | 'light';
 
 /**
  * Dock panel state for a SINGLE session. Each session owns its own right /
@@ -47,7 +47,7 @@ const THEME_STORAGE_KEY = 'agent-dashboard.theme';
 function loadTheme(): ThemeChoice {
   if (typeof window === 'undefined') return 'dark';
   const v = window.localStorage?.getItem(THEME_STORAGE_KEY);
-  return v === 'light' || v === 'system' ? v : 'dark';
+  return v === 'light' ? 'light' : 'dark';
 }
 
 interface UIState {

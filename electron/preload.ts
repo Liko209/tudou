@@ -136,6 +136,11 @@ const claudeApi = {
     ipcRenderer.invoke(IpcChannels.claudeSetTheme, theme),
 };
 
+const appApi = {
+  /** Relaunch the app — used to apply a theme change cleanly. */
+  relaunch: (): Promise<void> => ipcRenderer.invoke(IpcChannels.appRelaunch),
+};
+
 const hooksApi = {
   getStatus: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookGetStatus),
   install: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookInstall),
@@ -178,6 +183,7 @@ contextBridge.exposeInMainWorld('agentDashboard', {
   env: envApi,
   hooks: hooksApi,
   claude: claudeApi,
+  app: appApi,
   preferences: preferencesApi,
   files: filesApi,
   updates: updatesApi,
@@ -188,6 +194,7 @@ export type SessionApi = typeof sessionApi;
 export type EnvApi = typeof envApi;
 export type HooksApi = typeof hooksApi;
 export type ClaudeApi = typeof claudeApi;
+export type AppApi = typeof appApi;
 export type PreferencesApi = typeof preferencesApi;
 export type FilesApi = typeof filesApi;
 export type UpdatesApi = typeof updatesApi;

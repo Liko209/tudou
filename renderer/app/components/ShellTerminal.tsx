@@ -7,7 +7,6 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
-import { useUIStore } from '../../lib/stores/ui-store';
 import { getXtermTheme } from '../../lib/xterm-theme';
 import { attachMacKeyBindings } from '../../lib/xterm-mac-keybindings';
 
@@ -35,7 +34,6 @@ export function ShellTerminal({ cwd, visible = true }: ShellTerminalProps) {
   // Latest fit fn — lets the visibility effect refit without re-running the
   // spawn effect (which is keyed only on cwd, so the PTY isn't recreated).
   const safeFitRef = useRef<(() => void) | null>(null);
-  const theme = useUIStore((s) => s.theme);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -176,19 +174,8 @@ export function ShellTerminal({ cwd, visible = true }: ShellTerminalProps) {
     return () => cancelAnimationFrame(id);
   }, [visible]);
 
-  // Live-swap xterm colors when the user toggles dark/light/system.
-  useEffect(() => {
-    const term = termRef.current;
-    if (!term) return;
-    const id = requestAnimationFrame(() => {
-      try {
-        term.options.theme = getXtermTheme();
-      } catch {
-        /* xterm may be mid-dispose */
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [theme]);
+  // No live theme swap: the palette is baked in at construction. A theme
+  // change takes effect on the next launch (Settings prompts for a restart).
 
   if (error) {
     return (

@@ -5,6 +5,7 @@ import type {
   EnvApi,
   HooksApi,
   ClaudeApi,
+  AppApi,
   PreferencesApi,
   FilesApi,
   UpdatesApi,
@@ -19,6 +20,7 @@ declare global {
       env: EnvApi;
       hooks: HooksApi;
       claude: ClaudeApi;
+      app: AppApi;
       preferences: PreferencesApi;
       files: FilesApi;
       updates: UpdatesApi;

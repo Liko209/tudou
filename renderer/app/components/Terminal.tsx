@@ -31,7 +31,6 @@ export function Terminal({ sessionId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const composeRef = useRef<HTMLTextAreaElement>(null);
-  const theme = useUIStore((s) => s.theme);
   const draft = useUIStore((s) => s.composeDrafts[sessionId] ?? '');
   const setComposeDraft = useUIStore((s) => s.setComposeDraft);
   const composeOffset = useUIStore((s) => s.composeOffset);
@@ -264,19 +263,10 @@ export function Terminal({ sessionId }: TerminalProps) {
     };
   }, [sessionId]);
 
-  // Live-swap xterm colors when the user toggles dark/light/system.
-  useEffect(() => {
-    const term = termRef.current;
-    if (!term) return;
-    const id = requestAnimationFrame(() => {
-      try {
-        term.options.theme = getXtermTheme();
-      } catch {
-        /* xterm may be mid-dispose */
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [theme]);
+  // No live theme swap: the xterm palette is baked in at construction
+  // (getXtermTheme above). Hot-swapping it mid-session could garble a running
+  // TUI, so a theme change takes effect on the next launch (Settings prompts
+  // for a restart).
 
   return (
     <div className="relative h-full w-full">

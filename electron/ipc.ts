@@ -20,6 +20,7 @@ import type { PreferencesStore, Preferences } from './preferences';
 import type { SessionPersistence } from './session-persistence';
 import { listDir, readPreview } from './files-service';
 import { checkForUpdates, downloadUpdate, getUpdaterState, installUpdate } from './updater';
+import { relaunchApp } from './app-control';
 import type { Session } from '../shared/session-types';
 
 /**
@@ -142,6 +143,10 @@ export function registerSessionIpc(
 
   ipcMain.handle(IpcChannels.claudeSetTheme, (_e, theme: 'dark' | 'light') => {
     setClaudeTheme(theme);
+  });
+
+  ipcMain.handle(IpcChannels.appRelaunch, () => {
+    relaunchApp();
   });
 
   ipcMain.handle(

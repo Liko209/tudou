@@ -50,6 +50,9 @@ export const IpcChannels = {
   cliResolvePath: 'cli:resolve-path',
   dialogPickDirectory: 'dialog:pick-directory',
 
+  /** Relaunch the app (e.g. to apply a theme change cleanly). */
+  appRelaunch: 'app:relaunch',
+
   // Hook installer (M7)
   /** Sync ~/.claude/settings.json `theme` to match the dashboard. */
   claudeSetTheme: 'claude:set-theme',

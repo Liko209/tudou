@@ -50,6 +50,15 @@ export function SettingsModal() {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmRestart, setConfirmRestart] = useState(false);
+
+  // Switching theme updates the chrome immediately, but the terminal palette is
+  // fixed at launch — so prompt for a restart (the user can defer).
+  const pickTheme = (t: ThemeChoice): void => {
+    if (t === theme) return;
+    setTheme(t);
+    setConfirmRestart(true);
+  };
   const [confirmClear, setConfirmClear] = useState(false);
   const [hookStatus, setHookStatus] = useState<HookStatus | null>(null);
   const [hookBusy, setHookBusy] = useState(false);
@@ -127,12 +136,12 @@ export function SettingsModal() {
         <div className="flex min-h-[360px] min-w-0 flex-1 flex-col gap-6">
           {tab === 'general' && (
             <Section title="Appearance">
-              <div className="grid grid-cols-3 gap-1.5">
-                {(['dark', 'light', 'system'] as ThemeChoice[]).map((t) => (
+              <div className="grid grid-cols-2 gap-1.5">
+                {(['dark', 'light'] as ThemeChoice[]).map((t) => (
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setTheme(t)}
+                    onClick={() => pickTheme(t)}
                     className={cn(
                       'rounded-md border px-3 py-2 text-sm capitalize',
                       theme === t
@@ -144,6 +153,9 @@ export function SettingsModal() {
                   </button>
                 ))}
               </div>
+              <p className="mt-2 text-xs text-subtle">
+                Restart to fully apply — running terminals keep their colors until then.
+              </p>
             </Section>
           )}
 
@@ -315,6 +327,15 @@ export function SettingsModal() {
         destructive
         onConfirm={() => void doClearSessions()}
         onCancel={() => setConfirmClear(false)}
+      />
+      <ConfirmDialog
+        open={confirmRestart}
+        title="Restart to apply the theme?"
+        description="Running terminals keep their current colors until the app restarts, so some UI may look inconsistent until then. You can restart now or later yourself."
+        confirmLabel="Restart now"
+        cancelLabel="Later"
+        onConfirm={() => void window.agentDashboard?.app?.relaunch()}
+        onCancel={() => setConfirmRestart(false)}
       />
     </Modal>
   );
