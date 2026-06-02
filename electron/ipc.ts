@@ -137,6 +137,10 @@ export function registerSessionIpc(
     registry.write(id, data);
   });
 
+  ipcMain.handle(IpcChannels.sessionSetActive, (_e, id: string | null) => {
+    registry.setActiveSession(id);
+  });
+
   ipcMain.handle(IpcChannels.sessionResize, (_e, id: string, cols: number, rows: number) => {
     registry.resize(id, cols, rows);
   });

@@ -7,6 +7,7 @@ import {
   type PtySpawnOptions,
   type SessionDataPushPayload,
   type SessionSpawnRequest,
+  type SoundPlayPayload,
 } from '../shared/ipc-contracts';
 import type { HookStatus } from './hook-installer';
 import type { Preferences } from './preferences';
@@ -81,6 +82,9 @@ const sessionApi = {
     ipcRenderer.invoke(IpcChannels.cliResolvePath, name),
   pickDirectory: (opts?: { defaultPath?: string }): Promise<string | null> =>
     ipcRenderer.invoke(IpcChannels.dialogPickDirectory, opts),
+  /** Tell main which session the user is viewing (drives sound-cue suppression). */
+  setActive: (id: string | null): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.sessionSetActive, id),
 
   onAdd(callback: (session: Session) => void): () => void {
     const h = (_e: unknown, s: Session): void => callback(s);
@@ -193,6 +197,17 @@ const updatesApi = {
   },
 };
 
+const soundApi = {
+  /** Subscribe to "play this cue now" pushes from main. Returns an unsubscribe. */
+  onPlay(callback: (payload: SoundPlayPayload) => void): () => void {
+    const h = (_e: unknown, p: SoundPlayPayload): void => callback(p);
+    ipcRenderer.on(IpcChannels.soundPlay, h);
+    return () => {
+      ipcRenderer.off(IpcChannels.soundPlay, h);
+    };
+  },
+};
+
 contextBridge.exposeInMainWorld('agentDashboard', {
   version: '0.1.0-ui2',
   pty: ptyApi,
@@ -205,6 +220,7 @@ contextBridge.exposeInMainWorld('agentDashboard', {
   preferences: preferencesApi,
   files: filesApi,
   updates: updatesApi,
+  sound: soundApi,
 });
 
 export type PtyApi = typeof ptyApi;
@@ -217,3 +233,4 @@ export type UsageApi = typeof usageApi;
 export type PreferencesApi = typeof preferencesApi;
 export type FilesApi = typeof filesApi;
 export type UpdatesApi = typeof updatesApi;
+export type SoundApi = typeof soundApi;

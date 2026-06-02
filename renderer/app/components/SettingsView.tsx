@@ -7,11 +7,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Volume2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { cn } from '../../lib/utils';
 import { useUIStore, type ThemeChoice } from '../../lib/stores/ui-store';
+import { playCue } from '../../lib/sound';
+import type { SoundKind } from '../../../shared/ipc-contracts';
+import { SOUND_OPTIONS, SOUND_OFF } from '../../../shared/sound-catalog';
 import { PageHeader, PAGE_WIDTH } from './PageView';
 
 interface HookStatus {
@@ -34,7 +37,8 @@ interface Preferences {
     systemNotification: boolean;
     dockBadge: boolean;
     tray: boolean;
-    sound: boolean;
+    soundCompleteId: string;
+    soundAlertId: string;
   };
   quietHours: {
     enabled: boolean;
@@ -247,14 +251,39 @@ export function SettingsView() {
                       label="Menubar badge"
                       hint="Status dot in the macOS menubar."
                     />
-                    <CheckRow
-                      checked={prefs.notifications.sound}
-                      onToggle={(v) =>
-                        void save({ ...prefs, notifications: { ...prefs.notifications, sound: v } })
+                  </div>
+
+                  <Divider />
+
+                  <div className="flex flex-col gap-3">
+                    <SoundRow
+                      kind="complete"
+                      value={prefs.notifications.soundCompleteId}
+                      onChange={(v) =>
+                        void save({
+                          ...prefs,
+                          notifications: { ...prefs.notifications, soundCompleteId: v },
+                        })
                       }
-                      label="Sound when in background"
-                      hint="Chime only while Tudou isn't focused."
+                      label="Completion sound"
+                      hint="When a session finishes and it's your turn."
                     />
+                    <SoundRow
+                      kind="alert"
+                      value={prefs.notifications.soundAlertId}
+                      onChange={(v) =>
+                        void save({
+                          ...prefs,
+                          notifications: { ...prefs.notifications, soundAlertId: v },
+                        })
+                      }
+                      label="Attention sound"
+                      hint="When a session needs you to authorize or make a choice."
+                    />
+                    <p className="text-xs text-subtle">
+                      Plays when Tudou is in the background, or for any session other than the one
+                      you're viewing.
+                    </p>
                   </div>
 
                   <Divider />
@@ -638,6 +667,53 @@ function CheckRow({
         {hint && <span className="text-xs text-subtle">{hint}</span>}
       </span>
     </label>
+  );
+}
+
+/** Per-cue sound picker: a labeled dropdown (with an Off option) + Preview. */
+function SoundRow({
+  kind,
+  value,
+  onChange,
+  label,
+  hint,
+}: {
+  kind: SoundKind;
+  value: string;
+  onChange: (next: string) => void;
+  label: string;
+  hint?: string;
+}) {
+  const isOff = value === SOUND_OFF;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="text-sm text-ink">{label}</span>
+        {hint && <span className="text-xs text-subtle">{hint}</span>}
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 shrink-0 rounded-md border border-edge/10 bg-sunken px-2 text-sm text-ink focus:border-accent/60 focus:outline-none"
+      >
+        <option value={SOUND_OFF}>Off</option>
+        {SOUND_OPTIONS[kind].map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => playCue(kind, value)}
+        disabled={isOff}
+        aria-label={`Preview ${label}`}
+        title={isOff ? 'Turned off' : 'Preview'}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-edge/10 text-muted hover:border-accent/60 hover:text-ink disabled:opacity-40 disabled:hover:border-edge/10 disabled:hover:text-muted"
+      >
+        <Volume2 className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+    </div>
   );
 }
 

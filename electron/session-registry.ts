@@ -20,6 +20,31 @@ import type { CliAdapter, SpawnArgsInput } from './adapters/types';
 
 const LOGIN_SCAN_WINDOW_MS = 5000;
 const LOGIN_SCAN_BUFFER_LIMIT = 8 * 1024;
+
+/**
+ * Whether a PTY write represents genuine user input (a real answer to a
+ * permission/choice prompt) rather than a terminal-generated control emission.
+ *
+ * xterm forwards EVERYTHING it produces to the PTY — including focus in/out
+ * (`\x1b[O` / `\x1b[I`), arrow keys, and bracketed-paste markers. Crucially,
+ * switching sessions blurs the old terminal, which then emits a focus-out
+ * escape. We must NOT treat that as "the user answered", or the blocked bell
+ * would vanish on every session switch. So we strip escape sequences and only
+ * count it as input if a printable char or Enter/Tab remains.
+ */
+export function isUserInputData(data: string): boolean {
+  /* eslint-disable no-control-regex -- matching terminal control/ESC bytes is the point */
+  const stripped = data
+    // CSI sequences: focus in/out, arrow keys (\x1b[A), \x1b[200~ paste, reports
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    // SS3 sequences: application-mode arrows (\x1bOA), etc.
+    .replace(/\x1bO[@-~]/g, '')
+    // any lone/leftover ESC
+    .replace(/\x1b/g, '');
+  // Enter/Tab, or any non-control character (printable text, digits) = input.
+  return /[\r\n\t]/.test(stripped) || /[^\x00-\x1f\x7f]/.test(stripped);
+  /* eslint-enable no-control-regex */
+}
 // Trailing debounce for status transitions. Long enough to swallow the
 // transcript-replay burst on open (which is microtask-driven, so the timer
 // only fires once the burst settles), short enough to be imperceptible live.
@@ -106,6 +131,13 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
    * statusConfidence='high' — we've proven the hook is wired up.
    */
   private readonly hookActiveCliSessionIds = new Set<string>();
+
+  /**
+   * The session the user is currently viewing (reported by the renderer). Used
+   * only to suppress the sound cue for the session you're already watching —
+   * not authoritative for anything else. null = none / unknown.
+   */
+  private activeSessionId: string | null = null;
 
   /**
    * Per-session running PTY-output buffer for login-prompt detection.
@@ -400,6 +432,16 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     }
   }
 
+  /** Record which session the user is currently viewing (renderer hint). */
+  setActiveSession(id: string | null): void {
+    this.activeSessionId = id;
+  }
+
+  /** The session the user is currently viewing, if any. */
+  get activeSession(): string | null {
+    return this.activeSessionId;
+  }
+
   /**
    * True once a Claude hook has fired for this session — i.e. we have the
    * reliable Stop/Notification signal and no longer need to fall back to
@@ -415,11 +457,14 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     const ptyId = this.ptyIdFor(sessionId);
     if (!ptyId) return;
     // Responding to a permission/choice prompt clears 'blocked' immediately:
-    // the keystroke (picking an option, hitting enter) means the session is
+    // genuine input (picking an option, hitting enter) means the session is
     // moving again. We force it through (fromHook) to beat the blocked
     // suppression; the adapter / next hook re-confirm the status from there.
+    // Terminal-generated escapes (notably the focus-out a session emits when
+    // you switch away) are NOT input, so the bell survives session switches —
+    // it only clears when the user actually answers.
     const session = this.sessions.get(sessionId);
-    if (session?.status === 'blocked') {
+    if (session?.status === 'blocked' && isUserInputData(data)) {
       this.applyUpdate(sessionId, { status: 'working' }, true);
     }
     this.pty.write(ptyId, data);

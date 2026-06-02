@@ -15,6 +15,8 @@ import type { PreferencesStore } from './preferences';
 import { TRAY_ICON_DATA_URL_1X, TRAY_ICON_DATA_URL_2X } from './tray-icon';
 import { isInstalling } from './updater';
 import { isRelaunching } from './app-control';
+import { decideSound } from './sound-policy';
+import { SOUND_OFF } from '../shared/sound-catalog';
 
 // With a real menubar icon present, idle = icon only (no text). Live state
 // appends a compact count beside the icon.
@@ -164,8 +166,30 @@ export class LifecycleManager {
 
   private notify(session: Session): void {
     const prefs = this.preferences.get();
+    const quiet = this.preferences.isQuietHoursNow();
+    const isForeground = this.window.isFocused() && !this.window.isMinimized();
+
+    // Sound cue — decided independently of the visual banner toggle below, so
+    // the user can keep sounds on with banners off (or vice versa). A cue id of
+    // SOUND_OFF means that cue is disabled.
+    const completeId = prefs.notifications.soundCompleteId;
+    const alertId = prefs.notifications.soundAlertId;
+    const soundKind = decideSound({
+      status: session.status,
+      soundComplete: completeId !== SOUND_OFF,
+      soundAlert: alertId !== SOUND_OFF,
+      isQuietHours: quiet,
+      isForeground,
+      isActiveSession: this.registry.activeSession === session.id,
+    });
+    if (soundKind && !this.window.isDestroyed()) {
+      const id = soundKind === 'complete' ? completeId : alertId;
+      this.window.webContents.send(IpcChannels.soundPlay, { kind: soundKind, id });
+    }
+
+    // Visual banner — gated by its own toggle.
     if (!prefs.notifications.systemNotification) return;
-    if (this.preferences.isQuietHoursNow()) return;
+    if (quiet) return;
 
     // Status-based copy — no raw transcript/markdown in the body. The user
     // just needs to know WHICH session and WHAT happened.
@@ -190,9 +214,9 @@ export class LifecycleManager {
         break;
     }
 
-    const isForeground = this.window.isFocused() && !this.window.isMinimized();
-    const wantSound = prefs.notifications.sound && !isForeground;
-    const notification = new Notification({ title, body, silent: !wantSound });
+    // Always silent — sound is handled by our own cue above (decideSound),
+    // so the OS notification never double-beeps.
+    const notification = new Notification({ title, body, silent: true });
     notification.on('click', () => this.focusSession(session.id));
     notification.show();
   }

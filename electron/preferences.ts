@@ -1,6 +1,7 @@
 import { readFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { CliKind } from '../shared/ipc-contracts';
+import { DEFAULT_SOUND_ID, normalizeSoundId } from '../shared/sound-catalog';
 
 /**
  * User-configurable preferences. Persisted synchronously like
@@ -12,7 +13,10 @@ export interface Preferences {
     systemNotification: boolean;
     dockBadge: boolean;
     tray: boolean;
-    sound: boolean;
+    /** Chosen "session finished" cue (→ waiting): a catalog id, or 'off'. */
+    soundCompleteId: string;
+    /** Chosen "needs you" cue (→ blocked / errored): a catalog id, or 'off'. */
+    soundAlertId: string;
   };
   quietHours: {
     enabled: boolean;
@@ -31,7 +35,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     systemNotification: true,
     dockBadge: true,
     tray: true,
-    sound: true,
+    soundCompleteId: DEFAULT_SOUND_ID.complete,
+    soundAlertId: DEFAULT_SOUND_ID.alert,
   },
   quietHours: {
     enabled: false,
@@ -145,7 +150,12 @@ function mergeWithDefaults(p: unknown): Preferences {
   const base = clone(DEFAULT_PREFERENCES);
   if (!isRecord(p)) return base;
   if (isRecord(p.notifications)) {
-    Object.assign(base.notifications, pickBooleans(p.notifications, Object.keys(base.notifications)));
+    Object.assign(
+      base.notifications,
+      pickBooleans(p.notifications, ['systemNotification', 'dockBadge', 'tray']),
+    );
+    base.notifications.soundCompleteId = normalizeSoundId('complete', p.notifications.soundCompleteId);
+    base.notifications.soundAlertId = normalizeSoundId('alert', p.notifications.soundAlertId);
   }
   if (isRecord(p.quietHours)) {
     if (typeof p.quietHours.enabled === 'boolean') base.quietHours.enabled = p.quietHours.enabled;

@@ -25,13 +25,13 @@ describe('PreferencesStore', () => {
     writer.load();
     writer.setAll({
       ...DEFAULT_PREFERENCES,
-      notifications: { ...DEFAULT_PREFERENCES.notifications, sound: false },
+      notifications: { ...DEFAULT_PREFERENCES.notifications, soundAlertId: 'off' },
       cliPaths: { claude: '/usr/bin/claude', codex: null },
     });
 
     const reader = new PreferencesStore(file);
     const loaded = reader.load();
-    expect(loaded.notifications.sound).toBe(false);
+    expect(loaded.notifications.soundAlertId).toBe('off');
     expect(loaded.cliPaths.claude).toBe('/usr/bin/claude');
   });
 
@@ -57,7 +57,7 @@ describe('PreferencesStore', () => {
     const store = new PreferencesStore(file);
     const loaded = store.load();
     expect(loaded.notifications.systemNotification).toBe(false);
-    expect(loaded.notifications.sound).toBe(true); // default kept
+    expect(loaded.notifications.soundCompleteId).toBe('chime'); // default kept
     expect(loaded.quietHours).toEqual(DEFAULT_PREFERENCES.quietHours);
     expect(loaded.cliPaths).toEqual(DEFAULT_PREFERENCES.cliPaths);
   });

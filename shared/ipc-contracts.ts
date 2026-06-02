@@ -87,13 +87,29 @@ export const IpcChannels = {
   /** Push channel — main → renderer when the updater state changes. */
   updateState: 'update:state',
 
+  /** Renderer → main: report which session the user is currently viewing, so
+   *  main can suppress the sound cue for the session you're already watching. */
+  sessionSetActive: 'session:set-active',
+
   // Push channels — main → renderer.
   sessionAdd: 'session:add',
   sessionUpdate: 'session:update',
   sessionRemove: 'session:remove',
   sessionData: 'session:data',
   sessionFocus: 'session:focus',
+  /** Push channel — main → renderer: play a short sound cue. */
+  soundPlay: 'sound:play',
 } as const;
+
+/** Sound cue kinds played on session state changes. */
+export type SoundKind = 'complete' | 'alert';
+
+/** Payload for the `soundPlay` push — which cue, and which chosen sound file. */
+export interface SoundPlayPayload {
+  kind: SoundKind;
+  /** Catalog id (see shared/sound-catalog); resolves to `<kind>-<id>.wav`. */
+  id: string;
+}
 
 export interface SessionDataPushPayload {
   sessionId: string;

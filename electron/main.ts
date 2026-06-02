@@ -80,6 +80,9 @@ async function createMainWindow(): Promise<BrowserWindow> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false, // we need node-pty access from preload-adjacent main; renderer stays isolated
+      // Let us play the session sound cues programmatically — Chromium
+      // otherwise blocks audio.play() until a user gesture.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 

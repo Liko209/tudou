@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { SessionRegistry, type PtyHandle } from '../electron/session-registry';
+import { SessionRegistry, isUserInputData, type PtyHandle } from '../electron/session-registry';
 import type { CliAdapter, SpawnArgsInput } from '../electron/adapters/types';
 import type {
   PtyDataEvent,
@@ -454,6 +454,25 @@ describe('SessionRegistry hook-driven attention', () => {
     expect(reg.get(session.id)?.status).toBe('working');
   });
 
+  it('blocked survives a session switch (focus-out escape is not user input)', async () => {
+    const { reg, claude } = makeRegistry();
+    const session = await spawnWithCliId(reg, claude, 'claude-sw');
+
+    reg.applyHookEvent({ session_id: 'claude-sw', hook_event_name: 'PermissionRequest' });
+    expect(reg.get(session.id)?.status).toBe('blocked');
+
+    // Switching away blurs the terminal → xterm emits a focus-out escape via
+    // the write path. The bell must NOT clear — the prompt is still pending.
+    reg.write(session.id, '\x1b[O');
+    expect(reg.get(session.id)?.status).toBe('blocked');
+    // Switching back focuses it → focus-in escape. Still pending.
+    reg.write(session.id, '\x1b[I');
+    expect(reg.get(session.id)?.status).toBe('blocked');
+    // Now the user actually answers → clears.
+    reg.write(session.id, '\r');
+    expect(reg.get(session.id)?.status).toBe('working');
+  });
+
   it('drift recovery: adopts a hook by cwd when the session_id does not match', async () => {
     const { reg, claude } = makeRegistry();
     // The dashboard captured a stale id; the hook fires with the REAL id.
@@ -555,5 +574,31 @@ describe('SessionRegistry.kill / forget / disposeAll', () => {
     reg.disposeAll();
     expect(reg.list()).toEqual([]);
     expect(pty.disposed).toBe(true);
+  });
+});
+
+describe('isUserInputData', () => {
+  it('treats printable text, digits, and Enter/Tab as input', () => {
+    expect(isUserInputData('1')).toBe(true);
+    expect(isUserInputData('y')).toBe(true);
+    expect(isUserInputData('\r')).toBe(true);
+    expect(isUserInputData('\n')).toBe(true);
+    expect(isUserInputData('\t')).toBe(true);
+    expect(isUserInputData('yes')).toBe(true);
+  });
+
+  it('treats terminal-generated escapes as NOT input', () => {
+    expect(isUserInputData('\x1b[O')).toBe(false); // focus out (on switch away)
+    expect(isUserInputData('\x1b[I')).toBe(false); // focus in (on switch back)
+    expect(isUserInputData('\x1b[A')).toBe(false); // up arrow (CSI)
+    expect(isUserInputData('\x1bOB')).toBe(false); // down arrow (SS3 app mode)
+    expect(isUserInputData('\x1b[200~\x1b[201~')).toBe(false); // empty bracketed paste
+    expect(isUserInputData('\x1b[6;2R')).toBe(false); // cursor position report
+    expect(isUserInputData('')).toBe(false);
+  });
+
+  it('detects input even when bundled with escapes (arrow then enter)', () => {
+    expect(isUserInputData('\x1b[B\r')).toBe(true);
+    expect(isUserInputData('\x1b[200~hi\x1b[201~')).toBe(true); // pasted "hi"
   });
 });

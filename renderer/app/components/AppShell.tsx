@@ -6,6 +6,7 @@ import { EMPTY_PANEL, useActivePanel, useUIStore } from '../../lib/stores/ui-sto
 import { useSessionsStore } from '../../lib/stores/sessions-store';
 import { useSessionBridge } from '../../lib/hooks/use-session-bridge';
 import { useKeyboardShortcuts } from '../../lib/hooks/use-keyboard-shortcuts';
+import { useSoundEffects } from '../../lib/hooks/use-sound-effects';
 import { useTheme } from '../../lib/hooks/use-theme';
 import { useAnimatedMount } from '../../lib/hooks/use-animated-mount';
 import { Sidebar } from './Sidebar';
@@ -47,7 +48,14 @@ export function AppShell() {
 
   useSessionBridge();
   useKeyboardShortcuts();
+  useSoundEffects();
   useTheme();
+
+  // Tell main which session the user is viewing, so it can stay silent for the
+  // session you're already watching (sound only for background / other sessions).
+  useEffect(() => {
+    void window.agentDashboard?.sessions?.setActive(activeId);
+  }, [activeId]);
 
   // Forget panel state for sessions that no longer exist (their <Panel> also
   // unmounts below, tearing down any PTY).
