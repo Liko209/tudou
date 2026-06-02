@@ -25,12 +25,8 @@ import {
 import { useUIStore } from '../../lib/stores/ui-store';
 import { resolveActiveTheme } from '../../lib/active-theme';
 import { StatusDot } from './StatusDot';
+import { CliBadge } from './CliBadge';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-
-const CLI_LABEL: Record<'claude' | 'codex', string> = {
-  claude: 'CL',
-  codex: 'CX',
-};
 
 export function Sidebar() {
   const sessions = useSessionsStore((s) => s.sessions);
@@ -446,9 +442,7 @@ function SessionRow({ item, isActive, isResuming, indent, onSelect, onClose, onR
           title="Not running — click to resume"
         />
       )}
-      <span className="shrink-0 font-mono text-[10px] tracking-wider text-subtle">
-        {CLI_LABEL[item.cli]}
-      </span>
+      <CliBadge cli={item.cli} />
       {editing ? (
         <input
           autoFocus

@@ -40,23 +40,28 @@ export function getXtermTheme(): ITheme {
   // Light mode: black/brightBlack mapped to light grays so background chrome
   // disappears; foreground colors stay vivid for syntax/diff highlights.
   if (isLight) {
+    // On a near-white canvas, "bright" must NOT mean "lighter" — that washes
+    // colors out (yellow/green/cyan especially). Keep every slot dark/saturated
+    // enough to read on white; brights are at most equal in lightness, never
+    // paler. (Tailwind 600–700 range.) `black` stays a light gray so TUI chrome
+    // that paints bg=black blends into the canvas instead of banding.
     return {
       ...base,
       black: '#e5e7eb',
       red: '#dc2626',
-      green: '#16a34a',
-      yellow: '#ca8a04',
+      green: '#15803d',
+      yellow: '#a16207',
       blue: '#2563eb',
       magenta: '#9333ea',
-      cyan: '#0891b2',
+      cyan: '#0e7490',
       white: '#111827',
-      brightBlack: '#d1d5db',
-      brightRed: '#ef4444',
-      brightGreen: '#22c55e',
-      brightYellow: '#eab308',
-      brightBlue: '#3b82f6',
-      brightMagenta: '#a855f7',
-      brightCyan: '#06b6d4',
+      brightBlack: '#6b7280',
+      brightRed: '#dc2626',
+      brightGreen: '#16a34a',
+      brightYellow: '#b45309',
+      brightBlue: '#1d4ed8',
+      brightMagenta: '#7e22ce',
+      brightCyan: '#0891b2',
       brightWhite: '#030712',
     };
   }

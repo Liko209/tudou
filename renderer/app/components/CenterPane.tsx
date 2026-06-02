@@ -10,6 +10,7 @@ import { timeAgo } from '../../lib/time-ago';
 import { cn } from '../../lib/utils';
 import type { PreviousSession } from '../../../shared/session-types';
 import { Terminal } from './Terminal';
+import { CliBadge } from './CliBadge';
 
 /**
  * Renders one persistent <Terminal> per session and toggles visibility via
@@ -183,7 +184,6 @@ function RecentCard({
   pending: boolean;
   onClick: () => void;
 }) {
-  const cliLabel = item.cli === 'claude' ? 'CL' : 'CX';
   return (
     <button
       type="button"
@@ -198,9 +198,7 @@ function RecentCard({
       )}
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0 font-mono text-[10px] tracking-wider text-subtle">
-          {cliLabel}
-        </span>
+        <CliBadge cli={item.cli} />
         <span className="min-w-0 truncate text-sm text-ink">
           {item.title || stripLeadingCli(item.displayName)}
         </span>
