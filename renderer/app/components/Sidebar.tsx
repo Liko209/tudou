@@ -7,6 +7,7 @@ import {
   Minimize2,
   FolderPlus,
   Pencil,
+  BarChart3,
   Plus,
   Search,
   Settings,
@@ -37,6 +38,8 @@ export function Sidebar() {
   const renamePrevious = useSessionsStore((s) => s.renamePrevious);
   const openNewSession = useUIStore((s) => s.openNewSession);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
+  const usageOpen = useUIStore((s) => s.usageOpen);
+  const setUsageOpen = useUIStore((s) => s.setUsageOpen);
   const sectionsCollapsed = useUIStore((s) => s.sectionsCollapsed);
   const toggleSectionCollapsed = useUIStore((s) => s.toggleSectionCollapsed);
 
@@ -84,6 +87,7 @@ export function Sidebar() {
   };
 
   const handleSelect = async (it: SidebarItem): Promise<void> => {
+    setUsageOpen(false); // selecting a session leaves the Usage overlay
     if (it.isLive && it.live) {
       setActive(it.live.id);
       return;
@@ -300,6 +304,17 @@ export function Sidebar() {
       </div>
 
       <div className="border-t border-edge/5 p-2">
+        <button
+          type="button"
+          onClick={() => setUsageOpen(!usageOpen)}
+          className={cn(
+            'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm hover:bg-surface/60 hover:text-ink',
+            usageOpen ? 'bg-accent/10 text-ink' : 'text-muted',
+          )}
+        >
+          <BarChart3 className="h-4 w-4" strokeWidth={1.75} />
+          <span>Usage</span>
+        </button>
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}

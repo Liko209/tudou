@@ -92,6 +92,8 @@ interface UIState {
   sectionsCollapsed: { projects: boolean; chats: boolean };
   hookModalOpen: boolean;
   settingsOpen: boolean;
+  /** Full-screen Usage view overlaying the center pane. */
+  usageOpen: boolean;
   theme: ThemeChoice;
   /** Transient toast message; null when nothing to show. */
   toast: string | null;
@@ -118,6 +120,7 @@ interface UIState {
   setNewSessionOpen: (open: boolean) => void;
   setHookModalOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
+  setUsageOpen: (open: boolean) => void;
 }
 
 /** Apply a patch to the active session's panel state; no-op if no active
@@ -144,6 +147,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   newSessionOpen: false,
   hookModalOpen: false,
   settingsOpen: false,
+  usageOpen: false,
   theme: loadTheme(),
   toast: null,
   newSessionMode: null,
@@ -194,6 +198,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   setNewSessionOpen: (open) => set({ newSessionOpen: open }),
   setHookModalOpen: (open) => set({ hookModalOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setUsageOpen: (open) => set({ usageOpen: open }),
 }));
 
 /**

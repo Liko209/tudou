@@ -11,6 +11,7 @@ import { useAnimatedMount } from '../../lib/hooks/use-animated-mount';
 import { Sidebar } from './Sidebar';
 import { SessionHeader } from './SessionHeader';
 import { CenterPane } from './CenterPane';
+import { UsageView } from './UsageView';
 import { Panel } from './Panel';
 import { StatusBar } from './StatusBar';
 import { DragHandle } from './DragHandle';
@@ -22,6 +23,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 
 export function AppShell() {
   const leftCollapsed = useUIStore((s) => s.leftCollapsed);
+  const usageOpen = useUIStore((s) => s.usageOpen);
   const panels = useUIStore((s) => s.panels);
   const setRightPanelOpen = useUIStore((s) => s.setRightPanelOpen);
   const setRightPanelKind = useUIStore((s) => s.setRightPanelKind);
@@ -99,10 +101,15 @@ export function AppShell() {
             <SessionHeader />
           </ErrorBoundary>
           <div className="flex flex-1 min-w-0 min-h-0">
-            <main className="flex-1 min-w-0 min-h-0">
+            <main className="relative flex-1 min-w-0 min-h-0">
               <ErrorBoundary label="Terminal">
                 <CenterPane />
               </ErrorBoundary>
+              {usageOpen && (
+                <ErrorBoundary label="Usage">
+                  <UsageView />
+                </ErrorBoundary>
+              )}
             </main>
             {activePanel.rightOpen && (
               <DragHandle
