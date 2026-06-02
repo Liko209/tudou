@@ -381,6 +381,52 @@ describe('SessionRegistry hook-driven attention', () => {
     reg.applyHookEvent({ session_id: 'claude-w', hook_event_name: 'Stop' });
     expect(reg.get(session.id)?.status).toBe('waiting');
   });
+
+  it('hook-active: adapter cannot un-block a blocked session', async () => {
+    const { reg, claude } = makeRegistry();
+    const session = await spawnWithCliId(reg, claude, 'claude-blk');
+
+    reg.applyHookEvent({ session_id: 'claude-blk', hook_event_name: 'Notification' });
+    expect(reg.get(session.id)?.status).toBe('blocked');
+
+    // The blocking tool_use stays open, so the adapter keeps emitting 'working';
+    // it must NOT mask the blocked state.
+    claude.pending.push({ status: 'working' });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(reg.get(session.id)?.status).toBe('blocked');
+
+    // Only a hook clears it.
+    reg.applyHookEvent({ session_id: 'claude-blk', hook_event_name: 'Stop' });
+    expect(reg.get(session.id)?.status).toBe('waiting');
+  });
+
+  it('drift recovery: adopts a hook by cwd when the session_id does not match', async () => {
+    const { reg, claude } = makeRegistry();
+    // The dashboard captured a stale id; the hook fires with the REAL id.
+    const session = await spawnWithCliId(reg, claude, 'stale-id');
+    expect(reg.isHookActive(session.id)).toBe(false);
+
+    reg.applyHookEvent({
+      session_id: 'real-id',
+      hook_event_name: 'UserPromptSubmit',
+      cwd: baseSpawn.cwd,
+    });
+
+    expect(reg.get(session.id)?.cliSessionId).toBe('real-id'); // re-pointed
+    expect(reg.isHookActive(session.id)).toBe(true);
+    expect(reg.get(session.id)?.status).toBe('working');
+  });
+
+  it('drift recovery does not steal a session already hook-active for another id', async () => {
+    const { reg, claude } = makeRegistry();
+    const session = await spawnWithCliId(reg, claude, 'good-id');
+    reg.applyHookEvent({ session_id: 'good-id', hook_event_name: 'Stop' }); // now hook-active
+    expect(reg.isHookActive(session.id)).toBe(true);
+
+    // A foreign claude in the same cwd fires — must NOT re-point our session.
+    reg.applyHookEvent({ session_id: 'other-id', hook_event_name: 'Stop', cwd: baseSpawn.cwd });
+    expect(reg.get(session.id)?.cliSessionId).toBe('good-id');
+  });
 });
 
 describe('SessionRegistry.write / resize / data', () => {

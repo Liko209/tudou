@@ -452,10 +452,14 @@ function SessionRow({ item, isActive, isResuming, indent, onSelect, onClose, onR
           confidence={item.live.statusConfidence}
         />
       ) : (
+        // Match StatusDot's 14px footprint (centered 10px dot) so live and
+        // dormant rows align column-for-column.
         <span
-          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-subtle/40"
+          className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center"
           title="Not running — click to resume"
-        />
+        >
+          <span className="h-2.5 w-2.5 rounded-full bg-subtle/40" />
+        </span>
       )}
       <CliBadge cli={item.cli} />
       {editing ? (

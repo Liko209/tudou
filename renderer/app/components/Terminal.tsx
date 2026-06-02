@@ -16,6 +16,9 @@ import { ComposeOverlay } from './ComposeOverlay';
 
 interface TerminalProps {
   sessionId: string;
+  /** Whether this is the on-screen session. Focus follows activation so a
+   *  sidebar click lands the keyboard in the CLI (not the sidebar button). */
+  active?: boolean;
 }
 
 /**
@@ -27,7 +30,7 @@ interface TerminalProps {
  * which terminal is on screen; we refit on visibility change via
  * ResizeObserver.
  */
-export function Terminal({ sessionId }: TerminalProps) {
+export function Terminal({ sessionId, active = false }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const composeRef = useRef<HTMLTextAreaElement>(null);
@@ -267,6 +270,15 @@ export function Terminal({ sessionId }: TerminalProps) {
   // (getXtermTheme above). Hot-swapping it mid-session could garble a running
   // TUI, so a theme change takes effect on the next launch (Settings prompts
   // for a restart).
+
+  // Pull keyboard focus into the terminal when this session becomes active, so
+  // a sidebar click doesn't leave focus on the sidebar button (where Enter
+  // would re-trigger the row instead of authorizing the agent in the CLI).
+  useEffect(() => {
+    if (!active) return;
+    const id = requestAnimationFrame(() => termRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [active]);
 
   return (
     <div className="relative h-full w-full">

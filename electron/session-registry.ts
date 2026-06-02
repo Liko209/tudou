@@ -336,6 +336,28 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
         break;
       }
     }
+
+    // Drift recovery: if no session matches the hook's session_id but exactly
+    // one of our live Claude sessions is in the hook's cwd and hasn't been
+    // hook-wired yet, adopt this id for it. The hook payload's (session_id, cwd)
+    // is authoritative, so this self-heals a stale/wrong cliSessionId (e.g. a
+    // resume that captured the wrong id) — otherwise the session is stuck on the
+    // adapter's flaky status forever, never going hook-active.
+    if (!targetId && payload.cwd) {
+      const candidates = [...this.sessions.entries()].filter(
+        ([, s]) =>
+          s.cli === 'claude' &&
+          s.cwd === payload.cwd &&
+          s.status !== 'exited' &&
+          s.status !== 'errored' &&
+          !(s.cliSessionId !== null && this.hookActiveCliSessionIds.has(s.cliSessionId)),
+      );
+      const only = candidates.length === 1 ? candidates[0] : null;
+      if (only) {
+        targetId = only[0];
+        this.applyUpdate(targetId, { cliSessionId }, false); // re-point to the real id
+      }
+    }
     if (!targetId) return; // not our session
 
     // Mark hook as wired for this session — future updates stay 'high'.
@@ -539,15 +561,20 @@ export class SessionRegistry extends EventEmitter<SessionRegistryEvents> {
     //    hook-active session to 'waiting'. The adapter's JSONL heuristic flips
     //    to 'waiting' on any text-only assistant message, which would drop the
     //    pulse mid-turn; we suppress that.
-    //  - But the adapter MAY still turn the pulse ON ('working'): JSONL activity
-    //    reliably means the session is busy. This self-heals a missed
-    //    UserPromptSubmit hook (e.g. it raced ahead of cliSessionId capture, so
-    //    it matched no session and was dropped) — without it the session would
-    //    be stuck at 'waiting' for the whole turn while clearly working.
+    //  - The adapter MAY turn the pulse ON ('working'): JSONL activity reliably
+    //    means the session is busy. This self-heals a missed UserPromptSubmit
+    //    hook — without it the session would be stuck at 'waiting' for the whole
+    //    turn while clearly working.
+    //  - EXCEPT it must not override 'blocked' (Notification hook = needs your
+    //    decision/permission). While blocked, the offending tool_use stays open,
+    //    so the adapter keeps emitting 'working'; letting that through would mask
+    //    the blocked state. Only a hook (Stop/UserPromptSubmit) clears blocked.
     // Non-hook sessions: adapter owns status entirely, as before.
     const applyStatus =
       update.status !== undefined &&
-      (fromHook || !hookActive || update.status === 'working');
+      (fromHook ||
+        !hookActive ||
+        (update.status === 'working' && current.status !== 'blocked'));
 
     // Auto-seed a title from the first user prompt so sessions sharing a
     // project don't all read `<project> · HH:MM`. Only fires while title is

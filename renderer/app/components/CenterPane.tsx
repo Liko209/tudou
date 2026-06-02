@@ -43,7 +43,7 @@ export function CenterPane() {
           className="absolute inset-0"
           style={{ display: id === activeId ? 'block' : 'none' }}
         >
-          <Terminal sessionId={id} />
+          <Terminal sessionId={id} active={id === activeId} />
         </div>
       ))}
     </div>
