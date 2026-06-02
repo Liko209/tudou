@@ -116,9 +116,21 @@ export function initUpdater(window: BrowserWindow): void {
   });
   autoUpdater.on('error', (err) => setState({ phase: 'error', message: errText(err) }));
 
-  // Quietly check shortly after launch.
+  // Quietly check shortly after launch, then re-check periodically so a
+  // long-running window still discovers new releases (the renderer surfaces an
+  // "update available" badge off these state pushes). Never auto-downloads.
   setTimeout(() => void checkForUpdates(), 3000);
+  setInterval(() => {
+    // Don't interrupt an in-flight check / download / pending install.
+    if (state.phase === 'checking' || state.phase === 'downloading' || state.phase === 'ready') {
+      return;
+    }
+    void checkForUpdates();
+  }, RECHECK_INTERVAL_MS);
 }
+
+/** How often to re-check for updates after the initial post-launch check. */
+const RECHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 export async function checkForUpdates(): Promise<void> {
   if (!app.isPackaged) {

@@ -1,9 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { CircleHelp, Info, PanelBottom, PanelLeft, PanelRight, SquarePen } from 'lucide-react';
+import {
+  CircleHelp,
+  Download,
+  Info,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  SquarePen,
+} from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useActivePanel, useUIStore } from '../../lib/stores/ui-store';
+import { isUpdateActionable, useUpdaterStore } from '../../lib/stores/updater-store';
 import { selectActiveSession, useSessionsStore } from '../../lib/stores/sessions-store';
 import { tildify } from '../../lib/path-helpers';
 import { StatusDot } from './StatusDot';
@@ -21,6 +30,10 @@ export function SessionHeader() {
   const setBottomPanelOpen = useUIStore((s) => s.setBottomPanelOpen);
   const shortcutsOpen = useUIStore((s) => s.shortcutsOpen);
   const setShortcutsOpen = useUIStore((s) => s.setShortcutsOpen);
+  const openSettingsTo = useUIStore((s) => s.openSettingsTo);
+  const updatePhase = useUpdaterStore((s) => s.state?.phase);
+  const updateReady = updatePhase === 'ready';
+  const showUpdate = isUpdateActionable(updatePhase);
 
   const homeDir =
     typeof window !== 'undefined' ? (window.agentDashboard?.env.homedir() ?? null) : null;
@@ -69,6 +82,20 @@ export function SessionHeader() {
       )}
 
       <div className="titlebar-no-drag flex shrink-0 items-center gap-0.5">
+        {showUpdate && (
+          <IconButton
+            onClick={() => openSettingsTo('updates')}
+            label={
+              updateReady
+                ? 'Update downloaded — click to install'
+                : 'Update available — click to view'
+            }
+            tone="accent"
+            dot
+          >
+            <Download className="h-4 w-4" strokeWidth={1.75} />
+          </IconButton>
+        )}
         <IconButton
           active={shortcutsOpen}
           onClick={() => setShortcutsOpen(!shortcutsOpen)}
@@ -111,9 +138,13 @@ interface IconButtonProps {
   label: string;
   active?: boolean;
   disabled?: boolean;
+  /** Accent-tint the icon to draw attention (e.g. an available update). */
+  tone?: 'default' | 'accent';
+  /** Show a small accent status dot in the corner. */
+  dot?: boolean;
 }
 
-function IconButton({ children, onClick, label, active, disabled }: IconButtonProps) {
+function IconButton({ children, onClick, label, active, disabled, tone, dot }: IconButtonProps) {
   return (
     <button
       type="button"
@@ -123,14 +154,18 @@ function IconButton({ children, onClick, label, active, disabled }: IconButtonPr
       title={label}
       disabled={disabled}
       className={cn(
-        'flex h-8 w-8 items-center justify-center rounded text-muted',
+        'relative flex h-8 w-8 items-center justify-center rounded text-muted',
         'hover:bg-canvas hover:text-ink',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40',
+        tone === 'accent' && 'text-accent',
         active && 'bg-accent/10 text-accent',
         disabled && 'opacity-30 cursor-not-allowed hover:bg-transparent hover:text-muted',
       )}
     >
       {children}
+      {dot && (
+        <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-canvas" />
+      )}
     </button>
   );
 }

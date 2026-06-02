@@ -96,6 +96,12 @@ interface UIState {
   usageOpen: boolean;
   /** Keyboard cheat-sheet overlay (⌘/). */
   shortcutsOpen: boolean;
+  /**
+   * When Settings is opened programmatically, the section id to scroll to once
+   * it mounts (e.g. the update badge jumps straight to 'updates'). Cleared by
+   * SettingsView after it scrolls. null = open at the top as usual.
+   */
+  settingsScrollTarget: string | null;
   theme: ThemeChoice;
   /** Transient toast message; null when nothing to show. */
   toast: string | null;
@@ -124,6 +130,9 @@ interface UIState {
   setSettingsOpen: (open: boolean) => void;
   setUsageOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
+  /** Open Settings and scroll to a section (used by the update badge). */
+  openSettingsTo: (section: string) => void;
+  setSettingsScrollTarget: (section: string | null) => void;
 }
 
 /** Apply a patch to the active session's panel state; no-op if no active
@@ -152,6 +161,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   settingsOpen: false,
   usageOpen: false,
   shortcutsOpen: false,
+  settingsScrollTarget: null,
   theme: loadTheme(),
   toast: null,
   newSessionMode: null,
@@ -206,6 +216,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   setSettingsOpen: (open) => set(open ? { settingsOpen: true, usageOpen: false } : { settingsOpen: false }),
   setUsageOpen: (open) => set(open ? { usageOpen: true, settingsOpen: false } : { usageOpen: false }),
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+  openSettingsTo: (section) =>
+    set({ settingsOpen: true, usageOpen: false, settingsScrollTarget: section }),
+  setSettingsScrollTarget: (section) => set({ settingsScrollTarget: section }),
 }));
 
 /**

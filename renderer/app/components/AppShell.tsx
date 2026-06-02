@@ -6,6 +6,7 @@ import { EMPTY_PANEL, useActivePanel, useUIStore } from '../../lib/stores/ui-sto
 import { useSessionsStore } from '../../lib/stores/sessions-store';
 import { useSessionBridge } from '../../lib/hooks/use-session-bridge';
 import { useKeyboardShortcuts } from '../../lib/hooks/use-keyboard-shortcuts';
+import { useUpdaterStatus } from '../../lib/hooks/use-updater-status';
 import { useSoundEffects } from '../../lib/hooks/use-sound-effects';
 import { useTheme } from '../../lib/hooks/use-theme';
 import { useAnimatedMount } from '../../lib/hooks/use-animated-mount';
@@ -49,6 +50,7 @@ export function AppShell() {
 
   useSessionBridge();
   useKeyboardShortcuts();
+  useUpdaterStatus();
   useSoundEffects();
   useTheme();
 

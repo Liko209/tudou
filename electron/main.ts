@@ -1,4 +1,5 @@
 import { app, BrowserWindow, shell } from 'electron';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { PtyManager } from './pty-manager';
 import {
@@ -59,6 +60,18 @@ let hookServerStarted = false;
 
 function resolvePreloadPath(): string {
   return join(__dirname, 'preload.js');
+}
+
+/**
+ * Give the dev Dock tile our real icon. Only needed unpackaged — `electron .`
+ * runs inside the generic Electron bundle, so without this the Dock shows the
+ * Electron logo instead of Tudou. No-op in packaged builds (the .app bundle's
+ * icns already drives the Dock) and on non-macOS (no app.dock).
+ */
+function setDevDockIcon(): void {
+  if (app.isPackaged || !app.dock) return;
+  const iconPath = join(app.getAppPath(), 'build', 'icon.png');
+  if (existsSync(iconPath)) app.dock.setIcon(iconPath);
 }
 
 async function createMainWindow(): Promise<BrowserWindow> {
@@ -164,6 +177,11 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    // In dev (`electron .`) the Dock shows the generic Electron tile — our real
+    // icon is only baked into the .app at package time. Set it at runtime so the
+    // dev app shows as Tudou. (Packaged builds already get it from the bundle.)
+    setDevDockIcon();
+
     // Pull the user's interactive shell PATH into process.env BEFORE
     // anything tries to resolve / spawn CLIs. Finder-launched apps
     // otherwise only see launchd's minimal PATH and can't find claude

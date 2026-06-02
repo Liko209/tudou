@@ -149,6 +149,20 @@ export function SettingsView() {
     [],
   );
 
+  // Jump to a requested section when opened programmatically (e.g. the header's
+  // update badge → Updates). Runs once the sections are mounted, then clears it.
+  const scrollTarget = useUIStore((s) => s.settingsScrollTarget);
+  const clearScrollTarget = useUIStore((s) => s.setSettingsScrollTarget);
+  useEffect(() => {
+    if (!prefs || !scrollTarget) return;
+    const id = scrollTarget as SectionId;
+    const raf = requestAnimationFrame(() => {
+      scrollTo(id);
+      clearScrollTarget(null);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [prefs, scrollTarget, scrollTo, clearScrollTarget]);
+
   const reinstallHook = useCallback(async () => {
     const hooks = window.agentDashboard?.hooks;
     if (!hooks) return;
