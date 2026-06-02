@@ -44,22 +44,20 @@ function pickTier(value: number, tiers: Tier[]): { count: number; text: string }
   return null;
 }
 
-// Concrete, broadly-known references — chosen so the count lands in a feelable
-// range as usage grows (a page → Hamlet → the Three-Body trilogy → the Four
-// Classics; a coffee → … → an iPhone → a MacBook).
+// Concrete, broadly-known references. Books are measured in copies of Hamlet
+// (one well-known yardstick at every scale); spend climbs a familiar ladder of
+// goods so the count always lands in a feelable range.
 const BOOK_TIERS: Tier[] = [
-  { size: 500, unit: (n) => `${fmt(n)} 页书` },
-  { size: 30_000, unit: (n) => `${fmt(n)} 本《哈姆雷特》` },
-  { size: 430_000, unit: (n) => `${fmt(n)} 遍《三体》三部曲` },
-  { size: 2_000_000, unit: (n) => `${fmt(n)} 套《四大名著》` },
+  { size: 500, unit: (n) => `${fmt(n)} pages` },
+  { size: 30_000, unit: (n) => `${fmt(n)} × Hamlet` },
 ];
 
 const MONEY_TIERS: Tier[] = [
-  { size: 4.5, unit: (n) => `${fmt(n)} 杯咖啡` },
-  { size: 15, unit: (n) => `${fmt(n)} 张电影票` },
-  { size: 179, unit: (n) => `${fmt(n)} 副 AirPods` },
-  { size: 999, unit: (n) => `${fmt(n)} 部 iPhone 16 Pro` },
-  { size: 1999, unit: (n) => `${fmt(n)} 台 MacBook Pro` },
+  { size: 4.5, unit: (n) => `${fmt(n)} coffees` },
+  { size: 15, unit: (n) => `${fmt(n)} movie tickets` },
+  { size: 179, unit: (n) => `${fmt(n)} pairs of AirPods` },
+  { size: 999, unit: (n) => `${fmt(n)} × iPhone 16 Pro` },
+  { size: 1999, unit: (n) => `${fmt(n)} × MacBook Pro` },
 ];
 
 function fmt(n: number): string {
@@ -83,9 +81,9 @@ export function buildEquivalents(totals: UsageTotals): Equivalent[] {
   if (books) {
     out.push({
       key: 'books',
-      lead: '相当于写了',
+      lead: 'Wrote the equivalent of',
       value: books.text,
-      detail: `≈ ${fmt(outWords)} 字 · 按输出 token 估算`,
+      detail: `≈ ${fmt(outWords)} words · est. from output tokens`,
     });
   }
 
@@ -94,9 +92,9 @@ export function buildEquivalents(totals: UsageTotals): Equivalent[] {
   if (money) {
     out.push({
       key: 'spend',
-      lead: '这些花费够买',
+      lead: 'That spend could buy',
       value: money.text,
-      detail: `累计 ${usd(totals.costUSD)}`,
+      detail: `${usd(totals.costUSD)} total`,
     });
   }
 
@@ -106,9 +104,9 @@ export function buildEquivalents(totals: UsageTotals): Equivalent[] {
   if (hours >= 1) {
     out.push({
       key: 'reading',
-      lead: '相当于读了',
-      value: `${fmt(Math.round(hours))} 小时`,
-      detail: `按 ${READING_WPM} 词/分钟连续阅读`,
+      lead: 'Equivalent to reading',
+      value: `${fmt(Math.round(hours))} hours`,
+      detail: `at ${READING_WPM} words/min`,
     });
   }
 
@@ -118,9 +116,9 @@ export function buildEquivalents(totals: UsageTotals): Equivalent[] {
     const coffees = Math.round(saved / 4.5);
     out.push({
       key: 'cache',
-      lead: '缓存帮你省了',
+      lead: 'Caching saved you',
       value: `≈ ${usd(saved)}`,
-      detail: coffees >= 1 ? `≈ ${fmt(coffees)} 杯咖啡 · 估算` : '命中缓存省下的钱 · 估算',
+      detail: coffees >= 1 ? `≈ ${fmt(coffees)} coffees · estimated` : 'estimated',
     });
   }
 

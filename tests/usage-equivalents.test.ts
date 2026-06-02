@@ -13,14 +13,16 @@ describe('buildEquivalents', () => {
     expect(buildEquivalents(totals({}))).toEqual([]);
   });
 
-  it('scales the book reference up with output volume', () => {
-    // ~40k output tokens → ~30k words → ≈ 1 Hamlet
+  it('measures output in copies of Hamlet (more output → bigger count)', () => {
+    // ~40k output tokens → ~30k words → ≈ 1× Hamlet
     const small = find(buildEquivalents(totals({ tokensOutput: 40_000 })), 'books');
-    expect(small?.value).toContain('哈姆雷特');
+    expect(small?.value).toContain('Hamlet');
+    expect(small?.value).toMatch(/^1 ×/);
 
-    // ~3M output tokens → ~2.25M words → Four Classics tier
+    // ~3M output tokens → ~2.25M words → ~75× Hamlet
     const huge = find(buildEquivalents(totals({ tokensOutput: 3_000_000 })), 'books');
-    expect(huge?.value).toContain('四大名著');
+    expect(huge?.value).toContain('Hamlet');
+    expect(Number(huge!.value.replace(/[^0-9]/g, ''))).toBeGreaterThan(50);
   });
 
   it('omits the books card when output is negligible', () => {
@@ -29,14 +31,14 @@ describe('buildEquivalents', () => {
   });
 
   it('picks a concrete good matching spend size', () => {
-    expect(find(buildEquivalents(totals({ costUSD: 9 })), 'spend')?.value).toContain('咖啡');
+    expect(find(buildEquivalents(totals({ costUSD: 9 })), 'spend')?.value).toContain('coffees');
     expect(find(buildEquivalents(totals({ costUSD: 9000 })), 'spend')?.value).toContain('MacBook');
   });
 
   it('reports reading hours from total throughput', () => {
     const r = find(buildEquivalents(totals({ tokensInput: 2_000_000, tokensOutput: 0 })), 'reading');
     expect(r).toBeDefined();
-    expect(r?.value).toMatch(/小时$/);
+    expect(r?.value).toMatch(/hours$/);
   });
 
   it('estimates cache savings when there are cached tokens', () => {

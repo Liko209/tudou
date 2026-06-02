@@ -7,11 +7,14 @@ import { formatTokens } from '../../lib/context-usage';
 import { formatUSD } from '../../lib/usage';
 import { cn } from '../../lib/utils';
 
+// Use only Tailwind's default opacity steps (5/10/30/50/75/…) — arbitrary ones
+// like /8 or /45 generate NO css, which is why empty cells were invisible.
+// Level 0 = a visible empty square (so blank days still draw a grid).
 const LEVEL_CLASS = [
-  'bg-edge/8',
-  'bg-accent/25',
-  'bg-accent/45',
-  'bg-accent/70',
+  'bg-edge/10',
+  'bg-accent/30',
+  'bg-accent/50',
+  'bg-accent/75',
   'bg-accent',
 ] as const;
 
