@@ -4,6 +4,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { Gauge } from 'lucide-react';
 import type { RateLimits, RateLimitWindow } from '../../../shared/usage-types';
 import { cn } from '../../lib/utils';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+
+// Show the consent prompt at most once; declining or enabling both set it.
+const PROMPT_KEY = 'agent-dashboard.rateLimitPrompted';
+function alreadyPrompted(): boolean {
+  return typeof window !== 'undefined' && window.localStorage?.getItem(PROMPT_KEY) === '1';
+}
+function markPrompted(): void {
+  if (typeof window !== 'undefined') window.localStorage?.setItem(PROMPT_KEY, '1');
+}
 
 interface State {
   loading: boolean;
@@ -50,6 +60,7 @@ function Gauge2({ label, win }: { label: string; win: RateLimitWindow | undefine
 export function RateLimitsSection() {
   const [state, setState] = useState<State>({ loading: true, enabled: false, data: null });
   const [busy, setBusy] = useState(false);
+  const [consent, setConsent] = useState(false);
 
   const refresh = useCallback(() => {
     const api = window.agentDashboard?.usage;
@@ -59,13 +70,19 @@ export function RateLimitsSection() {
     }
     api
       .getRateLimits()
-      .then((r) => setState({ loading: false, enabled: r.status.enabled, data: r.data }))
+      .then((r) => {
+        setState({ loading: false, enabled: r.status.enabled, data: r.data });
+        // First time the Usage view is opened and tracking is off → ask once.
+        if (!r.status.enabled && !alreadyPrompted()) setConsent(true);
+      })
       .catch(() => setState({ loading: false, enabled: false, data: null }));
   }, []);
 
   useEffect(() => refresh(), [refresh]);
 
   const toggle = (enable: boolean): void => {
+    markPrompted();
+    setConsent(false);
     const api = window.agentDashboard?.usage;
     if (!api?.toggleRateLimits) return;
     setBusy(true);
@@ -75,7 +92,13 @@ export function RateLimitsSection() {
       .finally(() => setBusy(false));
   };
 
+  const declineConsent = (): void => {
+    markPrompted();
+    setConsent(false);
+  };
+
   return (
+    <>
     <div className="rounded-lg border border-edge/10 bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-subtle">
@@ -120,5 +143,15 @@ export function RateLimitsSection() {
         </div>
       )}
     </div>
+    <ConfirmDialog
+      open={consent}
+      title="Track Claude rate limits?"
+      description="Tudou can show your 5-hour and weekly limits by adding a statusLine wrapper to ~/.claude/settings.json. It preserves your existing status line (ccstatusline runs unchanged) and applies to every Claude session on this machine. Reversible anytime via Disable."
+      confirmLabel="Enable"
+      cancelLabel="Not now"
+      onConfirm={() => toggle(true)}
+      onCancel={declineConsent}
+    />
+    </>
   );
 }
