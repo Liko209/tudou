@@ -113,4 +113,23 @@ if (target?.owner && target?.repo) {
 }
 
 console.log(`\n\x1b[32m✓ Released v${version}. In-app updater will pick it up on next check.\x1b[0m`);
-console.log('  (Commit the package.json version bump when you’re ready.)');
+
+// Now that the release is actually published, commit + push the version bump so
+// main's version stays in lockstep with what's live. Done here (not before
+// publish) on purpose: a release that fails/aborts leaves no phantom version on
+// main. Best-effort — a git hiccup doesn't undo the release, so we fall back to
+// a manual reminder. Scoped to the bump files so it never sweeps up other work.
+step('Committing the version bump…');
+try {
+  run('git add package.json package-lock.json');
+  if (!capture('git diff --cached --name-only')) {
+    console.log('  (nothing to commit — version already recorded)');
+  } else {
+    run(`git commit -m "v${version}"`);
+    run('git push');
+    console.log(`  ✓ committed + pushed v${version}`);
+  }
+} catch {
+  console.warn('  ⚠ could not commit/push the bump — do it manually:');
+  console.warn(`    git add package.json package-lock.json && git commit -m "v${version}" && git push`);
+}
