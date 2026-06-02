@@ -4,21 +4,12 @@ import { useMemo } from 'react';
 import { X } from 'lucide-react';
 import { useSessionsStore, sortSessionsByActivity } from '../../lib/stores/sessions-store';
 import { useUIStore } from '../../lib/stores/ui-store';
-import { summarizeUsage, type UsageSummary } from '../../lib/usage';
+import { summarizeUsage, formatUSD, type UsageSummary } from '../../lib/usage';
 import { contextUsage, formatTokens } from '../../lib/context-usage';
 import { cn } from '../../lib/utils';
 import { CliBadge } from './CliBadge';
 import { StatusDot } from './StatusDot';
-
-function formatUSD(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '$0.00';
-  return n >= 100 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
-}
-
-/** Trim a model id to a compact label: drop a trailing -YYYYMMDD date stamp. */
-function shortModel(model: string): string {
-  return model.replace(/-\d{6,}$/, '');
-}
+import { UsageHistorySection, shortModel } from './UsageHistory';
 
 /**
  * Full-screen Usage overview — aggregates the live per-session metrics Tudou
@@ -53,17 +44,21 @@ export function UsageView() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {summary.sessionCount === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted">
-            No running sessions — usage appears here once a session is live.
-          </div>
-        ) : (
-          <div className="mx-auto flex max-w-4xl flex-col gap-4">
-            <SummaryCards summary={summary} />
-            <ModelDistribution summary={summary} />
-            <SessionTable list={list} onOpen={(id) => { setActive(id); setUsageOpen(false); }} />
-          </div>
-        )}
+        <div className="mx-auto flex max-w-4xl flex-col gap-4">
+          <div className="text-[11px] font-medium uppercase tracking-wider text-subtle">Live</div>
+          {summary.sessionCount === 0 ? (
+            <div className="rounded-lg border border-edge/10 bg-surface p-6 text-center text-sm text-muted">
+              No running sessions — live usage appears here once a session starts.
+            </div>
+          ) : (
+            <>
+              <SummaryCards summary={summary} />
+              <ModelDistribution summary={summary} />
+              <SessionTable list={list} onOpen={(id) => { setActive(id); setUsageOpen(false); }} />
+            </>
+          )}
+          <UsageHistorySection />
+        </div>
       </div>
     </div>
   );

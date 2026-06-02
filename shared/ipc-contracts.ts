@@ -53,6 +53,9 @@ export const IpcChannels = {
   /** Relaunch the app (e.g. to apply a theme change cleanly). */
   appRelaunch: 'app:relaunch',
 
+  /** Scan CLI JSONL transcripts for aggregated historical usage. */
+  usageGetHistory: 'usage:get-history',
+
   // Hook installer (M7)
   /** Sync ~/.claude/settings.json `theme` to match the dashboard. */
   claudeSetTheme: 'claude:set-theme',

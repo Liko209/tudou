@@ -1,5 +1,11 @@
 import type { Session, SessionStatus } from '../../shared/session-types';
 
+/** Compact USD formatter: `$0.00` under 100, whole dollars at/above. */
+export function formatUSD(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '$0.00';
+  return n >= 100 ? `$${Math.round(n).toLocaleString()}` : `$${n.toFixed(2)}`;
+}
+
 const ALL_STATUSES: SessionStatus[] = [
   'starting',
   'working',

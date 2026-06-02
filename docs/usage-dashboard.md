@@ -65,5 +65,7 @@ Model pricing + context limits live in `electron/adapters/cost-calculator.ts`.
 ## Status
 
 - [x] M1 — live aggregate view (full-screen, sidebar entry, summarizeUsage + tests)
-- [ ] M2 — historical usage
+- [x] M2 — historical usage (Claude): usage-history fold/finalize + usage-scanner
+  (mtime-cached) + IPC + History panels (today / 7d / all-time, 14-day bars,
+  top models/projects). Codex history is a follow-up.
 - [ ] M3 — rate-limit / quota

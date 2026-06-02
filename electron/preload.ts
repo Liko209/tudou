@@ -12,6 +12,7 @@ import type { HookStatus } from './hook-installer';
 import type { Preferences } from './preferences';
 import type { FileEntry, FilePreview } from './files-service';
 import type { UpdaterState } from './updater';
+import type { UsageHistory } from '../shared/usage-types';
 import type { PreviousSession, ResumableSession, Session } from '../shared/session-types';
 
 const ptyApi = {
@@ -141,6 +142,11 @@ const appApi = {
   relaunch: (): Promise<void> => ipcRenderer.invoke(IpcChannels.appRelaunch),
 };
 
+const usageApi = {
+  /** Aggregated historical usage scanned from CLI JSONL transcripts. */
+  getHistory: (): Promise<UsageHistory> => ipcRenderer.invoke(IpcChannels.usageGetHistory),
+};
+
 const hooksApi = {
   getStatus: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookGetStatus),
   install: (): Promise<HookStatus> => ipcRenderer.invoke(IpcChannels.hookInstall),
@@ -184,6 +190,7 @@ contextBridge.exposeInMainWorld('agentDashboard', {
   hooks: hooksApi,
   claude: claudeApi,
   app: appApi,
+  usage: usageApi,
   preferences: preferencesApi,
   files: filesApi,
   updates: updatesApi,
@@ -195,6 +202,7 @@ export type EnvApi = typeof envApi;
 export type HooksApi = typeof hooksApi;
 export type ClaudeApi = typeof claudeApi;
 export type AppApi = typeof appApi;
+export type UsageApi = typeof usageApi;
 export type PreferencesApi = typeof preferencesApi;
 export type FilesApi = typeof filesApi;
 export type UpdatesApi = typeof updatesApi;

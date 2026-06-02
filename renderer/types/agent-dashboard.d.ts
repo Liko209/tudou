@@ -6,6 +6,7 @@ import type {
   HooksApi,
   ClaudeApi,
   AppApi,
+  UsageApi,
   PreferencesApi,
   FilesApi,
   UpdatesApi,
@@ -21,6 +22,7 @@ declare global {
       hooks: HooksApi;
       claude: ClaudeApi;
       app: AppApi;
+      usage: UsageApi;
       preferences: PreferencesApi;
       files: FilesApi;
       updates: UpdatesApi;
