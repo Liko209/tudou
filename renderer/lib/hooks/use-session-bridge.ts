@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useSessionsStore } from '../stores/sessions-store';
+import { useUIStore } from '../stores/ui-store';
 
 /**
  * Mount once at app root. Loads the current Session snapshot from main and
@@ -58,9 +59,22 @@ export function useSessionBridge(): void {
       refreshPrevious();
     });
     // Main triggers this when the user clicks a notification or a tray
-    // menu item — we follow by activating the session in the UI.
+    // menu item — we follow by activating the session in the UI (and leave any
+    // Usage/Settings overlay so the session is actually visible).
     const offFocus = api.onFocus(({ id }) => {
-      if (id) setActive(id);
+      if (!id) return;
+      const ui = useUIStore.getState();
+      ui.setUsageOpen(false);
+      ui.setSettingsOpen(false);
+      setActive(id);
+    });
+
+    // Tray "New session / Open Usage / Open Settings" → open the view here.
+    const offOpenView = window.agentDashboard?.app?.onOpenView((view) => {
+      const ui = useUIStore.getState();
+      if (view === 'usage') ui.setUsageOpen(true);
+      else if (view === 'settings') ui.setSettingsOpen(true);
+      else if (view === 'newSession') ui.openNewSession();
     });
 
     return () => {
@@ -69,6 +83,7 @@ export function useSessionBridge(): void {
       offUpdate();
       offRemove();
       offFocus();
+      offOpenView?.();
     };
   }, [bulkReplace, removeSession, setActive, setPrevious, upsertSession]);
 }

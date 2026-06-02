@@ -9,6 +9,7 @@ import {
   registerFilesIpc,
   registerUpdaterIpc,
   chatsBaseDir,
+  rateLimitTracker,
 } from './ipc';
 import { SessionRegistry, setChatsBaseDir } from './session-registry';
 import { inheritShellPath } from './shell-env';
@@ -122,7 +123,13 @@ async function createMainWindow(): Promise<BrowserWindow> {
   registerUpdaterIpc();
 
   if (!lifecycle) {
-    lifecycle = new LifecycleManager(window, sessionRegistry, preferencesStore);
+    lifecycle = new LifecycleManager(window, sessionRegistry, preferencesStore, rateLimitTracker, {
+      preloadPath: resolvePreloadPath(),
+      load: (pop) => {
+        if (isDev) void pop.loadURL('http://localhost:3000/tray');
+        else void pop.loadFile(join(__dirname, '..', '..', 'renderer', 'out', 'tray.html'));
+      },
+    });
   }
   initUpdater(window);
 

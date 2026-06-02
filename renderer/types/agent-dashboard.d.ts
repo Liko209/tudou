@@ -11,6 +11,7 @@ import type {
   FilesApi,
   UpdatesApi,
   SoundApi,
+  TrayApi,
 } from '../../electron/preload';
 
 declare global {
@@ -28,6 +29,7 @@ declare global {
       files: FilesApi;
       updates: UpdatesApi;
       sound: SoundApi;
+      tray: TrayApi;
     };
   }
 }

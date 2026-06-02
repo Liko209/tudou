@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, type BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -24,7 +24,8 @@ import { relaunchApp } from './app-control';
 import { scanClaudeUsage } from './usage-scanner';
 import { RateLimitTracker } from './statusline-installer';
 
-const rateLimitTracker = new RateLimitTracker();
+/** Shared rate-limit tracker — also read by the tray (LifecycleManager). */
+export const rateLimitTracker = new RateLimitTracker();
 import type { Session } from '../shared/session-types';
 
 /**
@@ -191,18 +192,17 @@ export function registerSessionIpc(
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
   });
 
-  const onAdd = (s: Session): void => {
-    if (window.isDestroyed()) return;
-    window.webContents.send(IpcChannels.sessionAdd, s);
+  // Session lifecycle events go to ALL windows (main + the menu-bar popover),
+  // so the popover's session list stays live. High-volume terminal output
+  // (sessionData) stays main-only — the popover doesn't render terminals.
+  const broadcast = (channel: string, payload: unknown): void => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(channel, payload);
+    }
   };
-  const onUpdate = (s: Session): void => {
-    if (window.isDestroyed()) return;
-    window.webContents.send(IpcChannels.sessionUpdate, s);
-  };
-  const onRemove = (payload: { id: string }): void => {
-    if (window.isDestroyed()) return;
-    window.webContents.send(IpcChannels.sessionRemove, payload);
-  };
+  const onAdd = (s: Session): void => broadcast(IpcChannels.sessionAdd, s);
+  const onUpdate = (s: Session): void => broadcast(IpcChannels.sessionUpdate, s);
+  const onRemove = (payload: { id: string }): void => broadcast(IpcChannels.sessionRemove, payload);
   const onData = (payload: SessionDataPushPayload): void => {
     if (window.isDestroyed()) return;
     window.webContents.send(IpcChannels.sessionData, payload);

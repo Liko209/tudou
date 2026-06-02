@@ -8,6 +8,7 @@ import {
   type SessionDataPushPayload,
   type SessionSpawnRequest,
   type SoundPlayPayload,
+  type TrayView,
 } from '../shared/ipc-contracts';
 import type { HookStatus } from './hook-installer';
 import type { Preferences } from './preferences';
@@ -150,6 +151,14 @@ const claudeApi = {
 const appApi = {
   /** Relaunch the app — used to apply a theme change cleanly. */
   relaunch: (): Promise<void> => ipcRenderer.invoke(IpcChannels.appRelaunch),
+  /** Subscribe to "open this view" pushes from the tray. Returns an unsubscribe. */
+  onOpenView(callback: (view: TrayView) => void): () => void {
+    const h = (_e: unknown, v: TrayView): void => callback(v);
+    ipcRenderer.on(IpcChannels.uiOpen, h);
+    return () => {
+      ipcRenderer.off(IpcChannels.uiOpen, h);
+    };
+  },
 };
 
 const usageApi = {
@@ -208,6 +217,15 @@ const soundApi = {
   },
 };
 
+// Used by the menu-bar companion popover (the `tray/` route) to drive the main
+// window and dismiss itself.
+const trayApi = {
+  focusSession: (id: string): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.trayFocusSession, id),
+  openView: (view: TrayView): Promise<void> => ipcRenderer.invoke(IpcChannels.trayOpenView, view),
+  close: (): Promise<void> => ipcRenderer.invoke(IpcChannels.trayClosePopover),
+};
+
 contextBridge.exposeInMainWorld('agentDashboard', {
   version: '0.1.0-ui2',
   pty: ptyApi,
@@ -221,6 +239,7 @@ contextBridge.exposeInMainWorld('agentDashboard', {
   files: filesApi,
   updates: updatesApi,
   sound: soundApi,
+  tray: trayApi,
 });
 
 export type PtyApi = typeof ptyApi;
@@ -234,3 +253,4 @@ export type PreferencesApi = typeof preferencesApi;
 export type FilesApi = typeof filesApi;
 export type UpdatesApi = typeof updatesApi;
 export type SoundApi = typeof soundApi;
+export type TrayApi = typeof trayApi;

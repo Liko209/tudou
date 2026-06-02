@@ -91,6 +91,14 @@ export const IpcChannels = {
    *  main can suppress the sound cue for the session you're already watching. */
   sessionSetActive: 'session:set-active',
 
+  // Companion popover (the menu-bar mini panel) → main.
+  /** Focus a session in the main window (raises it) + close the popover. */
+  trayFocusSession: 'tray:focus-session',
+  /** Open a top-level view in the main window + close the popover. */
+  trayOpenView: 'tray:open-view',
+  /** Close (hide) the popover. */
+  trayClosePopover: 'tray:close-popover',
+
   // Push channels — main → renderer.
   sessionAdd: 'session:add',
   sessionUpdate: 'session:update',
@@ -99,10 +107,15 @@ export const IpcChannels = {
   sessionFocus: 'session:focus',
   /** Push channel — main → renderer: play a short sound cue. */
   soundPlay: 'sound:play',
+  /** Push channel — main → renderer: open a top-level view (from the tray). */
+  uiOpen: 'ui:open',
 } as const;
 
 /** Sound cue kinds played on session state changes. */
 export type SoundKind = 'complete' | 'alert';
+
+/** Top-level views the tray can ask the renderer to open. */
+export type TrayView = 'usage' | 'settings' | 'newSession';
 
 /** Payload for the `soundPlay` push — which cue, and which chosen sound file. */
 export interface SoundPlayPayload {
