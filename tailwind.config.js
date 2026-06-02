@@ -34,6 +34,20 @@ module.exports = {
         base: ['14px', '21px'],
         lg: ['16px', '24px'],
       },
+      keyframes: {
+        // A short ±1px nudge with a long rest between — a gentle "needs you"
+        // jitter, not a constant buzz.
+        shake: {
+          '0%, 72%, 100%': { transform: 'translateX(0)' },
+          '78%': { transform: 'translateX(-1.2px)' },
+          '84%': { transform: 'translateX(1.2px)' },
+          '90%': { transform: 'translateX(-1.2px)' },
+          '96%': { transform: 'translateX(1.2px)' },
+        },
+      },
+      animation: {
+        shake: 'shake 1.6s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

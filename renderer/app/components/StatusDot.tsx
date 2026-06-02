@@ -1,32 +1,31 @@
+import { BellRing, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { SessionStatus, StatusConfidence } from '../../../shared/session-types';
 
 /**
- * Session status. The two healthy states share a colour (green) and are told
- * apart by MOTION; the rest use distinct colours:
- *   working  — green dot, gently pulsing    → "healthy, busy right now"
- *   waiting  — green dot, static            → "healthy, free / your turn"
- *   blocked  — amber dot with a ping ring    → "stuck, needs you" (eye-catching)
- *   errored  — red dot, static               → "something broke"
- *   starting — grey dot, pulsing             → "booting"
- *   exited   — faint grey dot, static        → "process gone"
+ * Session status indicator. Three live states are now visually distinct by
+ * SHAPE + MOTION, not just colour:
+ *   working  — green spinner (animated)        → "busy right now"
+ *   waiting  — green dot, static               → "free / your turn"
+ *   blocked  — amber bell, gentle shake        → "needs you" (decision/auth)
+ *   errored  — red dot, static
+ *   starting — grey dot, pulsing
+ *   exited   — faint grey dot, static
  */
-interface StatusSpec {
-  dot: string;
-  label: string;
-  /** Continuous breathing — the session is actively doing something. */
-  pulse?: boolean;
-  /** Expanding ring colour — urgent, the session is stuck on you. */
-  ping?: string;
-}
+const LABEL: Record<SessionStatus, string> = {
+  working: 'working',
+  waiting: 'idle — waiting for you',
+  blocked: 'needs your input',
+  errored: 'errored',
+  starting: 'starting',
+  exited: 'exited',
+};
 
-const STATUS: Record<SessionStatus, StatusSpec> = {
-  working: { dot: 'bg-success', pulse: true, label: 'working' },
-  blocked: { dot: 'bg-warning', ping: 'bg-warning', label: 'needs your input' },
-  waiting: { dot: 'bg-success', label: 'idle — waiting for you' },
-  errored: { dot: 'bg-danger', label: 'errored' },
-  starting: { dot: 'bg-subtle', pulse: true, label: 'starting' },
-  exited: { dot: 'bg-subtle/40', label: 'exited' },
+const DOT: Record<Exclude<SessionStatus, 'working' | 'blocked'>, { cls: string; pulse?: boolean }> = {
+  waiting: { cls: 'bg-success' },
+  errored: { cls: 'bg-danger' },
+  starting: { cls: 'bg-subtle', pulse: true },
+  exited: { cls: 'bg-subtle/40' },
 };
 
 interface StatusDotProps {
@@ -36,32 +35,33 @@ interface StatusDotProps {
 }
 
 export function StatusDot({ status, confidence = 'high', className }: StatusDotProps) {
-  const spec = STATUS[status];
+  const title = `${LABEL[status]}${confidence === 'low' ? ' (polling mode)' : ''}`;
+  const wrapper = cn(
+    'inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center',
+    // Low confidence (polling, no hook) — dim slightly as a soft hint.
+    confidence === 'low' && 'opacity-70',
+    className,
+  );
+
+  if (status === 'working') {
+    return (
+      <span className={wrapper} title={title}>
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-success" strokeWidth={2.5} />
+      </span>
+    );
+  }
+  if (status === 'blocked') {
+    return (
+      <span className={wrapper} title={title}>
+        <BellRing className="h-3.5 w-3.5 animate-shake text-warning" strokeWidth={2.25} />
+      </span>
+    );
+  }
+
+  const spec = DOT[status];
   return (
-    <span
-      className={cn(
-        'relative inline-flex h-2.5 w-2.5 shrink-0',
-        // Low confidence (polling, no hook) — dim slightly as a soft hint.
-        confidence === 'low' && 'opacity-70',
-        className,
-      )}
-      title={`${spec.label}${confidence === 'low' ? ' (polling mode)' : ''}`}
-    >
-      {spec.ping && (
-        <span
-          className={cn(
-            'absolute inset-0 inline-flex animate-ping rounded-full opacity-75',
-            spec.ping,
-          )}
-        />
-      )}
-      <span
-        className={cn(
-          'relative inline-flex h-2.5 w-2.5 rounded-full',
-          spec.dot,
-          spec.pulse && 'animate-pulse',
-        )}
-      />
+    <span className={wrapper} title={title}>
+      <span className={cn('inline-flex h-2.5 w-2.5 rounded-full', spec.cls, spec.pulse && 'animate-pulse')} />
     </span>
   );
 }
