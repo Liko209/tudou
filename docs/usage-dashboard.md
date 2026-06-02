@@ -68,4 +68,11 @@ Model pricing + context limits live in `electron/adapters/cost-calculator.ts`.
 - [x] M2 — historical usage (Claude): usage-history fold/finalize + usage-scanner
   (mtime-cached) + IPC + History panels (today / 7d / all-time, 14-day bars,
   top models/projects). Codex history is a follow-up.
-- [ ] M3 — rate-limit / quota
+- [x] M3 — rate-limit / quota (opt-in): Claude exposes `rate_limits`
+  (five_hour/seven_day, used%, resets_at) only via the **statusLine** payload.
+  A Tudou statusLine wrapper captures it to `~/.claude/tudou-rate-limits.json`
+  and delegates to the user's existing statusLine command (preserved).
+  parseRateLimits + RateLimitTracker (install/restore) tested; wrapper
+  smoke-tested end-to-end. UI: enable CTA + 5h/weekly gauges with reset
+  countdown. (System monitor bits — child processes/ports/subagents — remain a
+  possible M4.)

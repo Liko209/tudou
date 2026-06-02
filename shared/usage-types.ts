@@ -24,6 +24,25 @@ export interface ProjectUsage extends UsageTotals {
   project: string;
 }
 
+export interface RateLimitWindow {
+  /** Percent of the window consumed, 0–100. */
+  usedPercentage: number;
+  /** Unix epoch seconds when the window resets (0 if unknown). */
+  resetsAt: number;
+}
+
+/**
+ * Rate-limit snapshot, captured from Claude Code's statusLine payload
+ * (`rate_limits.{five_hour,seven_day}`) by an opt-in Tudou statusLine wrapper.
+ */
+export interface RateLimits {
+  source: string;
+  /** Unix epoch seconds the snapshot was written. */
+  updatedAt: number;
+  fiveHour?: RateLimitWindow;
+  sevenDay?: RateLimitWindow;
+}
+
 export interface UsageHistory {
   /** ISO timestamp the scan finished. */
   generatedAt: string;

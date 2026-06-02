@@ -55,6 +55,10 @@ export const IpcChannels = {
 
   /** Scan CLI JSONL transcripts for aggregated historical usage. */
   usageGetHistory: 'usage:get-history',
+  /** Read the captured rate-limit snapshot + tracker status. */
+  usageGetRateLimits: 'usage:get-rate-limits',
+  /** Enable/disable the opt-in rate-limit statusLine capture. */
+  usageToggleRateLimits: 'usage:toggle-rate-limits',
 
   // Hook installer (M7)
   /** Sync ~/.claude/settings.json `theme` to match the dashboard. */

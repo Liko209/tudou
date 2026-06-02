@@ -10,6 +10,7 @@ import { cn } from '../../lib/utils';
 import { CliBadge } from './CliBadge';
 import { StatusDot } from './StatusDot';
 import { UsageHistorySection, shortModel } from './UsageHistory';
+import { RateLimitsSection } from './RateLimits';
 
 /**
  * Full-screen Usage overview — aggregates the live per-session metrics Tudou
@@ -45,6 +46,7 @@ export function UsageView() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto flex max-w-4xl flex-col gap-4">
+          <RateLimitsSection />
           <div className="text-[11px] font-medium uppercase tracking-wider text-subtle">Live</div>
           {summary.sessionCount === 0 ? (
             <div className="rounded-lg border border-edge/10 bg-surface p-6 text-center text-sm text-muted">

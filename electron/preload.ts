@@ -12,7 +12,13 @@ import type { HookStatus } from './hook-installer';
 import type { Preferences } from './preferences';
 import type { FileEntry, FilePreview } from './files-service';
 import type { UpdaterState } from './updater';
-import type { UsageHistory } from '../shared/usage-types';
+import type { UsageHistory, RateLimits } from '../shared/usage-types';
+import type { RateLimitStatus } from './statusline-installer';
+
+export interface RateLimitState {
+  status: RateLimitStatus;
+  data: RateLimits | null;
+}
 import type { PreviousSession, ResumableSession, Session } from '../shared/session-types';
 
 const ptyApi = {
@@ -145,6 +151,11 @@ const appApi = {
 const usageApi = {
   /** Aggregated historical usage scanned from CLI JSONL transcripts. */
   getHistory: (): Promise<UsageHistory> => ipcRenderer.invoke(IpcChannels.usageGetHistory),
+  /** Captured rate-limit snapshot + tracker status. */
+  getRateLimits: (): Promise<RateLimitState> => ipcRenderer.invoke(IpcChannels.usageGetRateLimits),
+  /** Enable/disable the opt-in rate-limit statusLine capture. */
+  toggleRateLimits: (enable: boolean): Promise<RateLimitState> =>
+    ipcRenderer.invoke(IpcChannels.usageToggleRateLimits, enable),
 };
 
 const hooksApi = {

@@ -22,6 +22,9 @@ import { listDir, readPreview } from './files-service';
 import { checkForUpdates, downloadUpdate, getUpdaterState, installUpdate } from './updater';
 import { relaunchApp } from './app-control';
 import { scanClaudeUsage } from './usage-scanner';
+import { RateLimitTracker } from './statusline-installer';
+
+const rateLimitTracker = new RateLimitTracker();
 import type { Session } from '../shared/session-types';
 
 /**
@@ -151,6 +154,14 @@ export function registerSessionIpc(
   });
 
   ipcMain.handle(IpcChannels.usageGetHistory, () => scanClaudeUsage());
+  ipcMain.handle(IpcChannels.usageGetRateLimits, () => ({
+    status: rateLimitTracker.getStatus(),
+    data: rateLimitTracker.read(),
+  }));
+  ipcMain.handle(IpcChannels.usageToggleRateLimits, (_e, enable: boolean) => {
+    const status = enable ? rateLimitTracker.enable() : rateLimitTracker.disable();
+    return { status, data: rateLimitTracker.read() };
+  });
 
   ipcMain.handle(
     IpcChannels.sessionListResumable,
