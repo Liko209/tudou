@@ -232,13 +232,17 @@ function TopSessions({ data }: { data: UsageHistory }) {
       </div>
       <div className="flex flex-col gap-1">
         {data.sessions.map((s) => (
-          <div key={s.id} className="flex items-center gap-2 text-xs" title={`${s.project}\n${s.id}`}>
-            <span className="w-28 shrink-0 truncate font-mono text-muted">
+          <div key={s.id} className="flex items-center gap-3 text-xs" title={`${s.project}\n${s.id}`}>
+            <span className="w-40 shrink-0 truncate font-mono text-muted">
               {s.project.split('/').pop() || s.project}
             </span>
-            <span className="w-20 shrink-0 font-mono text-subtle">{s.date}</span>
-            <span className="min-w-0 flex-1 truncate text-subtle">{formatTokens(tokensOf(s))} tok</span>
-            <span className="shrink-0 font-mono text-muted">{formatUSD(s.costUSD)}</span>
+            <span className="w-24 shrink-0 whitespace-nowrap font-mono tabular-nums text-subtle">
+              {s.date}
+            </span>
+            <span className="min-w-0 flex-1 truncate whitespace-nowrap text-subtle">
+              {formatTokens(tokensOf(s))} tok
+            </span>
+            <span className="w-16 shrink-0 text-right font-mono text-muted">{formatUSD(s.costUSD)}</span>
           </div>
         ))}
       </div>

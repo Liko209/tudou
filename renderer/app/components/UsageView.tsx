@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo } from 'react';
-import { X } from 'lucide-react';
 import { useSessionsStore, sortSessionsByActivity } from '../../lib/stores/sessions-store';
 import { useUIStore } from '../../lib/stores/ui-store';
 import { summarizeUsage, formatUSD, type UsageSummary } from '../../lib/usage';
@@ -11,6 +10,7 @@ import { CliBadge } from './CliBadge';
 import { StatusDot } from './StatusDot';
 import { UsageHistorySection, shortModel } from './UsageHistory';
 import { RateLimitsSection } from './RateLimits';
+import { PageHeader, PAGE_WIDTH } from './PageView';
 
 /**
  * Full-screen Usage overview — aggregates the live per-session metrics Tudou
@@ -27,25 +27,14 @@ export function UsageView() {
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col overflow-hidden bg-canvas">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-edge/10 px-4">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-sm font-medium text-ink">Usage</h1>
-          <span className="text-xs text-subtle">
-            live · {summary.sessionCount} session{summary.sessionCount === 1 ? '' : 's'}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setUsageOpen(false)}
-          aria-label="Close usage"
-          className="flex h-7 w-7 items-center justify-center rounded text-subtle hover:bg-surface/60 hover:text-ink"
-        >
-          <X className="h-4 w-4" strokeWidth={1.75} />
-        </button>
-      </header>
+      <PageHeader
+        title="Usage"
+        subtitle={`live · ${summary.sessionCount} session${summary.sessionCount === 1 ? '' : 's'}`}
+        onClose={() => setUsageOpen(false)}
+      />
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="mx-auto flex max-w-4xl flex-col gap-4">
+      <div className="min-h-0 flex-1 overflow-y-auto py-6">
+        <div className={cn(PAGE_WIDTH, 'flex flex-col gap-4')}>
           <RateLimitsSection />
           <div className="text-[11px] font-medium uppercase tracking-wider text-subtle">Live</div>
           {summary.sessionCount === 0 ? (

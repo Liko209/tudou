@@ -197,8 +197,10 @@ export const useUIStore = create<UIState>((set, get) => ({
   setBottomPanelHeight: (h) => set({ bottomPanelHeight: clamp(h, 160, 600) }),
   setNewSessionOpen: (open) => set({ newSessionOpen: open }),
   setHookModalOpen: (open) => set({ hookModalOpen: open }),
-  setSettingsOpen: (open) => set({ settingsOpen: open }),
-  setUsageOpen: (open) => set({ usageOpen: open }),
+  // Usage and Settings are mutually-exclusive full-screen pages over the center
+  // pane — opening one dismisses the other so they never stack.
+  setSettingsOpen: (open) => set(open ? { settingsOpen: true, usageOpen: false } : { settingsOpen: false }),
+  setUsageOpen: (open) => set(open ? { usageOpen: true, settingsOpen: false } : { usageOpen: false }),
 }));
 
 /**

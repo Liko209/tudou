@@ -18,12 +18,13 @@ import { DragHandle } from './DragHandle';
 import { NewSessionModal } from './NewSessionModal';
 import { HookSetupModal } from './HookSetupModal';
 import { Toast } from '../../components/ui/Toast';
-import { SettingsModal } from './SettingsModal';
+import { SettingsView } from './SettingsView';
 import { ErrorBoundary } from './ErrorBoundary';
 
 export function AppShell() {
   const leftCollapsed = useUIStore((s) => s.leftCollapsed);
   const usageOpen = useUIStore((s) => s.usageOpen);
+  const settingsOpen = useUIStore((s) => s.settingsOpen);
   const panels = useUIStore((s) => s.panels);
   const setRightPanelOpen = useUIStore((s) => s.setRightPanelOpen);
   const setRightPanelKind = useUIStore((s) => s.setRightPanelKind);
@@ -108,6 +109,11 @@ export function AppShell() {
               {usageOpen && (
                 <ErrorBoundary label="Usage">
                   <UsageView />
+                </ErrorBoundary>
+              )}
+              {settingsOpen && (
+                <ErrorBoundary label="Settings">
+                  <SettingsView />
                 </ErrorBoundary>
               )}
             </main>
@@ -197,7 +203,6 @@ export function AppShell() {
       </div>
       <NewSessionModal />
       <HookSetupModal />
-      <SettingsModal />
       <Toast />
     </>
   );

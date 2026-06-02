@@ -38,6 +38,7 @@ export function Sidebar() {
   const renamePrevious = useSessionsStore((s) => s.renamePrevious);
   const openNewSession = useUIStore((s) => s.openNewSession);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
+  const settingsOpen = useUIStore((s) => s.settingsOpen);
   const usageOpen = useUIStore((s) => s.usageOpen);
   const setUsageOpen = useUIStore((s) => s.setUsageOpen);
   const sectionsCollapsed = useUIStore((s) => s.sectionsCollapsed);
@@ -87,7 +88,8 @@ export function Sidebar() {
   };
 
   const handleSelect = async (it: SidebarItem): Promise<void> => {
-    setUsageOpen(false); // selecting a session leaves the Usage overlay
+    setUsageOpen(false); // selecting a session leaves the Usage / Settings overlay
+    setSettingsOpen(false);
     if (it.isLive && it.live) {
       setActive(it.live.id);
       return;
@@ -317,8 +319,11 @@ export function Sidebar() {
         </button>
         <button
           type="button"
-          onClick={() => setSettingsOpen(true)}
-          className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted hover:bg-surface/60 hover:text-ink"
+          onClick={() => setSettingsOpen(!settingsOpen)}
+          className={cn(
+            'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm hover:bg-surface/60 hover:text-ink',
+            settingsOpen ? 'bg-accent/10 text-ink' : 'text-muted',
+          )}
         >
           <Settings className="h-4 w-4" strokeWidth={1.75} />
           <span>Settings</span>

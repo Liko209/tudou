@@ -36,6 +36,7 @@ const domGlobals = {
   KeyboardEvent: 'readonly',
   globalThis: 'readonly',
   ResizeObserver: 'readonly',
+  IntersectionObserver: 'readonly',
   Notification: 'readonly',
   React: 'readonly',
   fetch: 'readonly',
