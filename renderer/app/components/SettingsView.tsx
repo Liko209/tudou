@@ -15,6 +15,7 @@ import { useUIStore, type ThemeChoice } from '../../lib/stores/ui-store';
 import { playCue } from '../../lib/sound';
 import type { SoundKind } from '../../../shared/ipc-contracts';
 import { SOUND_OPTIONS, SOUND_OFF } from '../../../shared/sound-catalog';
+import { pickProxyUrl, SUGGESTED_ENV_KEYS } from '../../../shared/network-env';
 import { PageHeader, PAGE_WIDTH } from './PageView';
 
 interface HookStatus {
@@ -63,11 +64,6 @@ interface Preferences {
     codex: string | null;
   };
   network: {
-    proxy: {
-      enabled: boolean;
-      url: string;
-      noProxy: string;
-    };
     customEnv: CustomEnvVar[];
   };
 }
@@ -472,40 +468,65 @@ type ProxyTestState =
   | { phase: 'error'; message: string };
 
 /**
- * Proxy + custom-env configuration. The dashboard spawns claude/codex as child
+ * Environment variables injected into every spawned CLI — the GUI equivalent of
+ * `export HTTPS_PROXY=… && claude`. The dashboard spawns claude/codex as child
  * processes that inherit only its own env, so a user's shell proxy never reaches
- * them. These vars get injected into every spawn — the GUI equivalent of
- * `export HTTPS_PROXY=… && claude`.
+ * them otherwise.
+ *
+ * Edits build up in a local draft; nothing is persisted until the user clicks
+ * Save (explicit so it's obvious whether a change took effect). Cancel reverts
+ * the draft to what's saved.
  */
-function NetworkSection({
+export function NetworkSection({
   prefs,
   save,
 }: {
   prefs: Preferences;
   save: (next: Preferences) => Promise<void>;
 }) {
-  const { proxy, customEnv } = prefs.network;
-  // Local drafts so the Test button reads exactly what's in the inputs (no race
-  // with the async save), committing to prefs on blur.
-  const [url, setUrl] = useState(proxy.url);
-  const [noProxy, setNoProxy] = useState(proxy.noProxy);
+  const savedKey = JSON.stringify(prefs.network.customEnv);
+  const [rows, setRows] = useState<CustomEnvVar[]>(() => JSON.parse(savedKey));
   const [test, setTest] = useState<ProxyTestState>({ phase: 'idle' });
+  const [justSaved, setJustSaved] = useState(false);
 
-  useEffect(() => setUrl(proxy.url), [proxy.url]);
-  useEffect(() => setNoProxy(proxy.noProxy), [proxy.noProxy]);
+  // Re-sync the draft whenever the persisted list changes (our own Save, or a
+  // global Reset). Keyed on the serialized list so identity churn never wipes an
+  // in-progress edit.
+  useEffect(() => {
+    setRows(JSON.parse(savedKey));
+  }, [savedKey]);
 
-  const saveProxy = (patch: Partial<Preferences['network']['proxy']>) =>
-    void save({ ...prefs, network: { ...prefs.network, proxy: { ...proxy, ...patch } } });
+  const dirty = JSON.stringify(rows) !== savedKey;
 
-  const saveEnv = (next: CustomEnvVar[]) =>
-    void save({ ...prefs, network: { ...prefs.network, customEnv: next } });
+  // Drop the "Saved" confirmation the moment the user edits again.
+  useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
 
-  const runTest = useCallback(async () => {
+  const update = (i: number, patch: Partial<CustomEnvVar>) =>
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const remove = (i: number) => setRows((rs) => rs.filter((_, j) => j !== i));
+  const add = (key = '') => setRows((rs) => [...rs, { key, value: '', enabled: true }]);
+
+  // Suggested keys not already in the draft → one-click chips to add them.
+  const missing = SUGGESTED_ENV_KEYS.filter(
+    (k) => !rows.some((r) => r.key.trim().toUpperCase() === k),
+  );
+
+  const onSave = async () => {
+    await save({ ...prefs, network: { ...prefs.network, customEnv: rows } });
+    setJustSaved(true);
+    setTest({ phase: 'idle' });
+  };
+  const onCancel = () => setRows(JSON.parse(savedKey));
+
+  const proxyUrl = pickProxyUrl(rows);
+  const runTest = async () => {
     const api = window.agentDashboard?.network;
-    if (!api) return;
+    if (!api || !proxyUrl) return;
     setTest({ phase: 'testing' });
     try {
-      const r = await api.testProxy({ url });
+      const r = await api.testProxy({ url: proxyUrl });
       setTest(
         r.ok
           ? { phase: 'ok', status: r.status ?? 0, ms: r.ms ?? 0 }
@@ -514,181 +535,133 @@ function NetworkSection({
     } catch (e) {
       setTest({ phase: 'error', message: e instanceof Error ? e.message : String(e) });
     }
-  }, [url]);
+  };
 
   return (
     <div className="flex flex-col gap-3">
-      <CheckRow
-        checked={proxy.enabled}
-        onToggle={(v) => saveProxy({ enabled: v })}
-        label="Use a proxy"
-        hint="Inject proxy env vars (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY) into every Claude / Codex session this app launches."
-      />
-
-      <div className={cn('flex flex-col gap-2 pl-6', !proxy.enabled && 'opacity-50')}>
-        <BlurInput
-          label="URL"
-          value={url}
-          draft={url}
-          setDraft={setUrl}
-          disabled={!proxy.enabled}
-          placeholder="http://127.0.0.1:7890"
-          onCommit={(v) => {
-            if (v !== proxy.url) saveProxy({ url: v });
-          }}
-        />
-        <BlurInput
-          label="No proxy"
-          value={noProxy}
-          draft={noProxy}
-          setDraft={setNoProxy}
-          disabled={!proxy.enabled}
-          placeholder="localhost,127.0.0.1 (optional)"
-          onCommit={(v) => {
-            if (v !== proxy.noProxy) saveProxy({ noProxy: v });
-          }}
-        />
-
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="default"
-            disabled={!proxy.enabled || !url.trim() || test.phase === 'testing'}
-            onClick={() => void runTest()}
-          >
-            {test.phase === 'testing' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {test.phase === 'testing' ? 'Testing…' : 'Test proxy'}
-          </Button>
-          {test.phase === 'ok' && (
-            <span className="inline-flex items-center gap-1 text-xs text-success">
-              <Check className="h-3.5 w-3.5" />
-              Connected · {test.status} · {(test.ms / 1000).toFixed(1)}s
-            </span>
-          )}
-          {test.phase === 'error' && (
-            <span className="inline-flex items-center gap-1 text-xs text-danger" title={test.message}>
-              <X className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate max-w-[18rem]">{test.message}</span>
-            </span>
-          )}
-        </div>
-      </div>
-
-      <Divider />
-
-      <div className="text-[11px] font-medium uppercase tracking-wider text-subtle">
-        Custom environment variables
-      </div>
-      <p className="-mt-1 text-xs text-subtle">
-        Extra vars exported into every session (e.g. ANTHROPIC_BASE_URL, NODE_EXTRA_CA_CERTS).
+      <p className="text-xs text-subtle">
+        Variables exported into every Claude / Codex session this app launches. Fill in a value to
+        apply it — e.g. <code className="text-ink">HTTPS_PROXY</code> ={' '}
+        <code className="text-ink">http://127.0.0.1:7890</code>. Empty ones are ignored.
       </p>
 
-      {customEnv.length > 0 && (
+      {rows.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          {customEnv.map((v, i) => (
+          {rows.map((v, i) => (
             <EnvVarRow
               key={i}
               entry={v}
-              onChange={(next) => saveEnv(customEnv.map((e, j) => (j === i ? next : e)))}
-              onRemove={() => saveEnv(customEnv.filter((_, j) => j !== i))}
+              onChange={(patch) => update(i, patch)}
+              onRemove={() => remove(i)}
             />
           ))}
         </div>
       )}
 
-      <div>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => saveEnv([...customEnv, { key: '', value: '', enabled: true }])}
-        >
+      <div className="flex flex-wrap items-center gap-1.5">
+        {missing.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => add(k)}
+            className="inline-flex items-center gap-1 rounded-md border border-edge/10 bg-sunken px-2 py-1 font-mono text-[11px] text-muted hover:border-accent/60 hover:text-ink"
+          >
+            <Plus className="h-3 w-3" />
+            {k}
+          </button>
+        ))}
+        <Button size="sm" variant="ghost" onClick={() => add()}>
           <Plus className="h-3.5 w-3.5" />
           Add variable
         </Button>
+      </div>
+
+      <Divider />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="primary" disabled={!dirty} onClick={() => void onSave()}>
+          Save
+        </Button>
+        <Button size="sm" variant="ghost" disabled={!dirty} onClick={onCancel}>
+          Cancel
+        </Button>
+        {dirty ? (
+          <span className="text-xs text-warning">Unsaved changes</span>
+        ) : justSaved ? (
+          <span className="inline-flex items-center gap-1 text-xs text-success">
+            <Check className="h-3.5 w-3.5" />
+            Saved
+          </span>
+        ) : null}
+
+        <span className="flex-1" />
+
+        <Button
+          size="sm"
+          variant="default"
+          disabled={!proxyUrl || test.phase === 'testing'}
+          onClick={() => void runTest()}
+          title={proxyUrl ? undefined : 'Fill in an HTTPS_PROXY / HTTP_PROXY value to test'}
+        >
+          {test.phase === 'testing' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {test.phase === 'testing' ? 'Testing…' : 'Test proxy'}
+        </Button>
+        {test.phase === 'ok' && (
+          <span className="inline-flex items-center gap-1 text-xs text-success">
+            <Check className="h-3.5 w-3.5" />
+            {test.status} · {(test.ms / 1000).toFixed(1)}s
+          </span>
+        )}
+        {test.phase === 'error' && (
+          <span className="inline-flex items-center gap-1 text-xs text-danger" title={test.message}>
+            <X className="h-3.5 w-3.5 shrink-0" />
+            <span className="max-w-[16rem] truncate">{test.message}</span>
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-/** Label + text input that commits on blur (mirrors PathRow's pattern). */
-function BlurInput({
-  label,
-  value,
-  draft,
-  setDraft,
-  onCommit,
-  placeholder,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  draft: string;
-  setDraft: (v: string) => void;
-  onCommit: (v: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="w-16 shrink-0 font-mono text-xs text-muted">{label}</span>
-      <input
-        type="text"
-        value={draft}
-        disabled={disabled}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          if (draft !== value) onCommit(draft);
-        }}
-        placeholder={placeholder}
-        className="flex-1 rounded-md border border-edge/10 bg-sunken px-2 py-1.5 font-mono text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none disabled:opacity-50"
-      />
-    </div>
-  );
-}
-
-/** One custom env var: [enabled][KEY]=[value][remove]. Commits on blur. */
+/** One custom env var: [enabled][KEY]=[value][remove]. Edits the parent draft
+ *  directly (no blur commit) — persistence happens on the section's Save. */
 function EnvVarRow({
   entry,
   onChange,
   onRemove,
 }: {
   entry: CustomEnvVar;
-  onChange: (next: CustomEnvVar) => void;
+  onChange: (patch: Partial<CustomEnvVar>) => void;
   onRemove: () => void;
 }) {
-  const [key, setKey] = useState(entry.key);
-  const [value, setValue] = useState(entry.value);
-  useEffect(() => setKey(entry.key), [entry.key]);
-  useEffect(() => setValue(entry.value), [entry.value]);
-
   return (
     <div className={cn('flex items-center gap-2', !entry.enabled && 'opacity-50')}>
       <input
         type="checkbox"
         checked={entry.enabled}
-        onChange={(e) => onChange({ ...entry, enabled: e.target.checked })}
+        onChange={(e) => onChange({ enabled: e.target.checked })}
         className="accent-accent"
         aria-label="Enable variable"
       />
       <input
         type="text"
-        value={key}
-        onChange={(e) => setKey(e.target.value)}
-        onBlur={() => {
-          if (key !== entry.key) onChange({ ...entry, key });
-        }}
+        value={entry.key}
+        onChange={(e) => onChange({ key: e.target.value })}
         placeholder="KEY"
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
         className="w-40 shrink-0 rounded-md border border-edge/10 bg-sunken px-2 py-1.5 font-mono text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
       />
       <span className="font-mono text-xs text-subtle">=</span>
       <input
         type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => {
-          if (value !== entry.value) onChange({ ...entry, value });
-        }}
+        value={entry.value}
+        onChange={(e) => onChange({ value: e.target.value })}
         placeholder="value"
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
         className="flex-1 rounded-md border border-edge/10 bg-sunken px-2 py-1.5 font-mono text-xs text-ink placeholder:text-subtle focus:border-accent/60 focus:outline-none"
       />
       <button

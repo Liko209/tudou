@@ -1,5 +1,27 @@
 # Proxy / Network Environment Variables
 
+> **Revision (v2 — unified env table).** The original dedicated proxy control
+> (toggle + URL + NO_PROXY) was removed in favour of a single key/value
+> environment-variable table, for two reasons surfaced by user feedback:
+> 1. The bare "URL" field was opaque — users couldn't tell which env var it
+>    mapped to.
+> 2. A real bug: the proxy fields used a `BlurInput` whose `value` and `draft`
+>    props were the same variable, so its `draft !== value` commit guard was
+>    always false and the URL never persisted (the custom-env rows used a
+>    correct local-draft-vs-prop pattern, which is why only they saved).
+>
+> The model is now **one flat `customEnv` list** the user controls explicitly
+> (what you type is exactly what's exported). Common keys (`HTTPS_PROXY`,
+> `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`) are pre-seeded empty / offered as
+> one-click chips. Edits live in a **local draft** and persist only on an
+> explicit **Save** (with a "Saved" / "Unsaved changes" indicator); **Cancel**
+> reverts. The **Test proxy** button derives its URL from the proxy keys in the
+> table (`pickProxyUrl`). The pure helpers moved to `shared/network-env.ts` so
+> the renderer and main share one source of truth, and are covered by unit tests
+> plus a jsdom component test (`tests/network-section-ui.test.tsx`) that guards
+> the Save-persists / Cancel-reverts behaviour. Sections below describe the
+> original v1 design for history.
+
 ## Problem
 
 Users who run `claude` and `codex` behind an HTTP proxy normally `export

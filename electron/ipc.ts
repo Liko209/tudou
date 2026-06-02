@@ -15,7 +15,7 @@ import {
 import type { PtyManager } from './pty-manager';
 import type { SessionRegistry } from './session-registry';
 import { resolveCliPath } from './cli-resolver';
-import { buildNetworkEnv, buildProxyTestArgs } from './network-env';
+import { buildNetworkEnv, buildProxyTestArgs } from '../shared/network-env';
 import { setClaudeTheme } from './claude-settings';
 import type { HookInstaller, HookStatus } from './hook-installer';
 import { buildHookScript } from './hook-installer';

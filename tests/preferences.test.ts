@@ -79,29 +79,23 @@ describe('PreferencesStore', () => {
     expect(loaded.quietHours.end).toBe(DEFAULT_PREFERENCES.quietHours.end);
   });
 
-  it('persists the network section (proxy + custom env)', async () => {
+  it('persists the network custom env list', async () => {
     const file = join(ROOT, 'network.json');
     const writer = new PreferencesStore(file);
     writer.load();
     writer.setAll({
       ...DEFAULT_PREFERENCES,
       network: {
-        proxy: { enabled: true, url: 'http://127.0.0.1:7890', noProxy: 'localhost' },
-        customEnv: [{ key: 'ANTHROPIC_BASE_URL', value: 'https://x', enabled: true }],
+        customEnv: [{ key: 'HTTPS_PROXY', value: 'http://127.0.0.1:7890', enabled: true }],
       },
     });
     const loaded = new PreferencesStore(file).load();
-    expect(loaded.network.proxy).toEqual({
-      enabled: true,
-      url: 'http://127.0.0.1:7890',
-      noProxy: 'localhost',
-    });
     expect(loaded.network.customEnv).toEqual([
-      { key: 'ANTHROPIC_BASE_URL', value: 'https://x', enabled: true },
+      { key: 'HTTPS_PROXY', value: 'http://127.0.0.1:7890', enabled: true },
     ]);
   });
 
-  it('defaults the network section when an older file omits it', async () => {
+  it('seeds the suggested keys when an older file omits the network section', async () => {
     const file = join(ROOT, 'no-network.json');
     await writeFile(
       file,
@@ -111,7 +105,17 @@ describe('PreferencesStore', () => {
     expect(loaded.network).toEqual(DEFAULT_PREFERENCES.network);
   });
 
-  it('sanitizes malformed network entries', async () => {
+  it('keeps an explicitly empty custom env list (user cleared it)', async () => {
+    const file = join(ROOT, 'empty-network.json');
+    await writeFile(
+      file,
+      JSON.stringify({ version: 1, preferences: { network: { customEnv: [] } } }),
+    );
+    const loaded = new PreferencesStore(file).load();
+    expect(loaded.network.customEnv).toEqual([]);
+  });
+
+  it('ignores a legacy proxy object and sanitizes malformed env entries', async () => {
     const file = join(ROOT, 'bad-network.json');
     await writeFile(
       file,
@@ -119,20 +123,19 @@ describe('PreferencesStore', () => {
         version: 1,
         preferences: {
           network: {
-            proxy: { enabled: 'yes', url: 123, noProxy: null },
+            proxy: { enabled: true, url: 'http://legacy' }, // legacy field → ignored
             customEnv: [
               { key: 'OK', value: 'v', enabled: true },
               { key: 42, value: 'x', enabled: true }, // bad key → dropped
               'garbage', // not an object → dropped
-              { key: 'NOVAL', enabled: true }, // missing value → value defaults to ''
+              { key: 'NOVAL', enabled: true }, // missing value → defaults to ''
             ],
           },
         },
       }),
     );
     const loaded = new PreferencesStore(file).load();
-    // proxy fields with wrong types fall back to defaults
-    expect(loaded.network.proxy).toEqual(DEFAULT_PREFERENCES.network.proxy);
+    expect('proxy' in loaded.network).toBe(false);
     expect(loaded.network.customEnv).toEqual([
       { key: 'OK', value: 'v', enabled: true },
       { key: 'NOVAL', value: '', enabled: true },

@@ -6,7 +6,7 @@ import {
   DEFAULT_NETWORK_PREFERENCES,
   type CustomEnvVar,
   type NetworkPreferences,
-} from './network-env';
+} from '../shared/network-env';
 
 /**
  * User-configurable preferences. Persisted synchronously like
@@ -190,11 +190,9 @@ function mergeWithDefaults(p: unknown): Preferences {
 
 function mergeNetwork(n: Record<string, unknown>): NetworkPreferences {
   const base = clone(DEFAULT_NETWORK_PREFERENCES);
-  if (isRecord(n.proxy)) {
-    if (typeof n.proxy.enabled === 'boolean') base.proxy.enabled = n.proxy.enabled;
-    if (typeof n.proxy.url === 'string') base.proxy.url = n.proxy.url;
-    if (typeof n.proxy.noProxy === 'string') base.proxy.noProxy = n.proxy.noProxy;
-  }
+  // `customEnv` is the whole model now (older files may also carry a legacy
+  // `proxy` object — harmlessly ignored). An explicit array on disk replaces
+  // the seeded defaults, including an empty list (a user who cleared it).
   if (Array.isArray(n.customEnv)) {
     base.customEnv = n.customEnv.flatMap((e): CustomEnvVar[] => {
       // Drop anything that isn't a well-formed entry; coerce missing optional

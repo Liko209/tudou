@@ -2,6 +2,9 @@ import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
 export default defineConfig({
+  // Match Next's automatic JSX runtime so component files (which don't import
+  // React) transform correctly under vitest.
+  esbuild: { jsx: 'automatic' },
   test: {
     globals: true,
     environment: 'node',
