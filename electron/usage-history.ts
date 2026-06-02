@@ -1,10 +1,15 @@
 import { estimateCost } from './adapters/cost-calculator';
+import { classifyTask } from './task-classifier';
 import type {
+  CategoryDayUsage,
+  CategoryUsage,
   DailyUsage,
   ModelDayUsage,
   ModelUsage,
   ProjectDayUsage,
   ProjectUsage,
+  ToolDayUsage,
+  ToolUsage,
   UsageHistory,
   UsageTotals,
 } from '../shared/usage-types';
@@ -25,6 +30,10 @@ export interface UsageAccumulator {
   /** Keyed `${day}${SEP}${model}` and `${day}${SEP}${project}` for period rollups. */
   byDayModel: Map<string, UsageTotals>;
   byDayProject: Map<string, UsageTotals>;
+  byTool: Map<string, UsageTotals>;
+  byCategory: Map<string, UsageTotals>;
+  byDayTool: Map<string, UsageTotals>;
+  byDayCategory: Map<string, UsageTotals>;
   totals: UsageTotals;
 }
 
@@ -39,8 +48,47 @@ export function newAccumulator(): UsageAccumulator {
     byProject: new Map(),
     byDayModel: new Map(),
     byDayProject: new Map(),
+    byTool: new Map(),
+    byCategory: new Map(),
+    byDayTool: new Map(),
+    byDayCategory: new Map(),
     totals: emptyTotals(),
   };
+}
+
+interface ToolExtract {
+  /** Raw tool_use names (for the classifier). */
+  raw: string[];
+  /** Distinct display labels (`mcp:<server>` collapsed) for the tool breakdown. */
+  labels: string[];
+  /** Concatenated Bash command strings. */
+  bash: string;
+}
+
+function toolLabel(name: string): string {
+  if (name.startsWith('mcp__')) {
+    const server = name.split('__')[1];
+    return server ? `mcp:${server}` : 'mcp';
+  }
+  return name;
+}
+
+/** Pull tool_use names + Bash commands out of an assistant message's content. */
+function extractTools(content: unknown): ToolExtract {
+  const raw: string[] = [];
+  const labels = new Set<string>();
+  let bash = '';
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (!isRecord(block) || block.type !== 'tool_use' || typeof block.name !== 'string') continue;
+      raw.push(block.name);
+      labels.add(toolLabel(block.name));
+      if (block.name === 'Bash' && isRecord(block.input) && typeof block.input.command === 'string') {
+        bash += `${block.input.command}\n`;
+      }
+    }
+  }
+  return { raw, labels: [...labels], bash };
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -64,9 +112,16 @@ function addInto(map: Map<string, UsageTotals>, key: string, t: Omit<UsageTotals
  * Fold one parsed Claude JSONL object into the accumulator. No-op for lines
  * that aren't assistant messages carrying token usage (user turns, meta,
  * synthetic placeholder turns). `project` scopes the per-project rollup —
- * pass the line's cwd (preferred) or a decoded directory label.
+ * pass the line's cwd (preferred) or a decoded directory label. `userText` is
+ * the prompt that triggered this turn (the scanner tracks it), used to classify
+ * the task category.
  */
-export function foldClaudeLine(acc: UsageAccumulator, parsed: unknown, project: string): void {
+export function foldClaudeLine(
+  acc: UsageAccumulator,
+  parsed: unknown,
+  project: string,
+  userText = '',
+): void {
   if (!isRecord(parsed) || parsed.type !== 'assistant') return;
   const msg = isRecord(parsed.message) ? parsed.message : null;
   if (!msg) return;
@@ -97,6 +152,26 @@ export function foldClaudeLine(acc: UsageAccumulator, parsed: unknown, project: 
   addInto(acc.byDayModel, `${day}${SEP}${modelKey}`, delta);
   addInto(acc.byDayProject, `${day}${SEP}${project}`, delta);
 
+  // Tool + task-category attribution. Each turn lands in exactly one category;
+  // its usage is split evenly across the distinct tools it invoked (so totals
+  // aren't double-counted across tools).
+  const { raw, labels, bash } = extractTools(msg.content);
+  const category = classifyTask({ tools: raw, bash, userText });
+  addInto(acc.byCategory, category, delta);
+  addInto(acc.byDayCategory, `${day}${SEP}${category}`, delta);
+  if (labels.length > 0) {
+    const split = {
+      tokensInput: tokensInput / labels.length,
+      tokensOutput: tokensOutput / labels.length,
+      tokensCached: tokensCached / labels.length,
+      costUSD: costUSD / labels.length,
+    };
+    for (const label of labels) {
+      addInto(acc.byTool, label, split);
+      addInto(acc.byDayTool, `${day}${SEP}${label}`, split);
+    }
+  }
+
   acc.totals.tokensInput += tokensInput;
   acc.totals.tokensOutput += tokensOutput;
   acc.totals.tokensCached += tokensCached;
@@ -122,6 +197,10 @@ export function mergeAccumulator(into: UsageAccumulator, from: UsageAccumulator)
   mergeMap(into.byProject, from.byProject);
   mergeMap(into.byDayModel, from.byDayModel);
   mergeMap(into.byDayProject, from.byDayProject);
+  mergeMap(into.byTool, from.byTool);
+  mergeMap(into.byCategory, from.byCategory);
+  mergeMap(into.byDayTool, from.byDayTool);
+  mergeMap(into.byDayCategory, from.byDayCategory);
   into.totals.tokensInput += from.totals.tokensInput;
   into.totals.tokensOutput += from.totals.tokensOutput;
   into.totals.tokensCached += from.totals.tokensCached;
@@ -154,6 +233,21 @@ export function finalizeHistory(
     return { date: key.slice(0, i), project: key.slice(i + 1), ...t };
   });
 
+  const byTool: ToolUsage[] = [...acc.byTool.entries()]
+    .map(([tool, t]) => ({ tool, ...t }))
+    .sort((a, b) => b.costUSD - a.costUSD || b.messages - a.messages);
+  const byCategory: CategoryUsage[] = [...acc.byCategory.entries()]
+    .map(([category, t]) => ({ category, ...t }))
+    .sort((a, b) => b.costUSD - a.costUSD);
+  const toolByDay: ToolDayUsage[] = [...acc.byDayTool.entries()].map(([key, t]) => {
+    const i = key.indexOf(SEP);
+    return { date: key.slice(0, i), tool: key.slice(i + 1), ...t };
+  });
+  const categoryByDay: CategoryDayUsage[] = [...acc.byDayCategory.entries()].map(([key, t]) => {
+    const i = key.indexOf(SEP);
+    return { date: key.slice(0, i), category: key.slice(i + 1), ...t };
+  });
+
   // sessions / sessionCount are per-file (per-transcript) and filled in by the
   // scanner; finalize works purely from the accumulator.
   return {
@@ -166,5 +260,9 @@ export function finalizeHistory(
     modelByDay,
     projectByDay,
     sessions: [],
+    byTool,
+    toolByDay,
+    byCategory,
+    categoryByDay,
   };
 }

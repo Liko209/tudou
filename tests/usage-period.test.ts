@@ -29,6 +29,16 @@ const HISTORY: UsageHistory = {
     { date: '2026-06-30', project: '/b', ...t(300, 30, 0, 3) },
   ],
   sessions: [],
+  byTool: [],
+  toolByDay: [
+    { date: '2026-06-25', tool: 'Edit', ...t(200, 20, 0, 2) },
+    { date: '2026-06-30', tool: 'Bash', ...t(300, 30, 0, 3) },
+  ],
+  byCategory: [],
+  categoryByDay: [
+    { date: '2026-06-25', category: 'Coding', ...t(200, 20, 0, 2) },
+    { date: '2026-06-30', category: 'Testing', ...t(300, 30, 0, 3) },
+  ],
 };
 
 describe('rollupPeriod', () => {
@@ -52,6 +62,14 @@ describe('rollupPeriod', () => {
     expect(r.totals.costUSD).toBe(6);
     const opus = r.byModel.find((m) => m.model === 'opus')!;
     expect(opus.tokensInput).toBe(300); // 100 + 200 across two days
+  });
+
+  it('rolls up tools and task categories by period', () => {
+    const today = rollupPeriod(HISTORY, 'today', NOW);
+    expect(today.byTool.map((x) => x.tool)).toEqual(['Bash']);
+    expect(today.byCategory.map((x) => x.category)).toEqual(['Testing']);
+    const week = rollupPeriod(HISTORY, '7d', NOW);
+    expect(week.byCategory.map((c) => c.category)).toEqual(['Testing', 'Coding']); // cost desc
   });
 });
 

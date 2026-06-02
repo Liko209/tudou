@@ -66,6 +66,29 @@ describe('foldClaudeLine', () => {
     expect(acc.totals.messages).toBe(0);
   });
 
+  it('attributes usage to tools and a task category', () => {
+    const acc = newAccumulator();
+    const line = {
+      type: 'assistant',
+      timestamp: '2026-06-01T10:00:00Z',
+      message: {
+        model: 'claude-opus-4-7',
+        usage: { input_tokens: 100, output_tokens: 20 },
+        content: [
+          { type: 'text', text: 'editing' },
+          { type: 'tool_use', name: 'Edit', input: { file_path: '/x' } },
+          { type: 'tool_use', name: 'mcp__github__search', input: {} },
+        ],
+      },
+    };
+    foldClaudeLine(acc, line, '/p', 'add a new feature');
+    // Two distinct tools → usage split in half each; MCP collapsed to mcp:github.
+    expect(acc.byTool.get('Edit')!.tokensInput).toBe(50);
+    expect(acc.byTool.get('mcp:github')!.tokensInput).toBe(50);
+    // Edit + "add a new feature" prompt → Feature Dev, full usage (not split).
+    expect(acc.byCategory.get('Feature Dev')!.tokensInput).toBe(100);
+  });
+
   it('falls back to "unknown" model and bucket when fields are missing', () => {
     const acc = newAccumulator();
     foldClaudeLine(acc, assistantLine({ ts: '2026-06-01T10:00:00Z', model: null, input: 10, output: 1 }), '/p');

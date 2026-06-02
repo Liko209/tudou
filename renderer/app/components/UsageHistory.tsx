@@ -113,6 +113,16 @@ export function UsageHistorySection() {
               rows={roll.byProject.slice(0, 6).map((p) => ({ key: p.project, label: p.project.split('/').pop() || p.project, cost: p.costUSD }))}
             />
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <BarList
+              title="By task type"
+              rows={roll.byCategory.slice(0, 8).map((c) => ({ key: c.category, label: c.category, cost: c.costUSD }))}
+            />
+            <BarList
+              title="By tool"
+              rows={roll.byTool.slice(0, 8).map((x) => ({ key: x.tool, label: x.tool, cost: x.costUSD }))}
+            />
+          </div>
           <TopSessions data={data} />
         </div>
       )}

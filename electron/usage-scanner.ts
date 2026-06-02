@@ -36,6 +36,7 @@ async function parseFile(path: string, fallbackProject: string): Promise<UsageAc
   } catch {
     return acc; // unreadable → empty contribution
   }
+  let lastUserText = '';
   for (const line of text.split('\n')) {
     if (!line) continue;
     let parsed: unknown;
@@ -44,11 +45,29 @@ async function parseFile(path: string, fallbackProject: string): Promise<UsageAc
     } catch {
       continue; // skip partial/corrupt lines
     }
+    if (isRecord(parsed) && parsed.type === 'user') {
+      const t = userTextFrom(parsed);
+      if (t) lastUserText = t; // the prompt that triggers the following turn(s)
+    }
     const project =
       isRecord(parsed) && typeof parsed.cwd === 'string' && parsed.cwd ? parsed.cwd : fallbackProject;
-    foldClaudeLine(acc, parsed, project);
+    foldClaudeLine(acc, parsed, project, lastUserText);
   }
   return acc;
+}
+
+/** Extract the user's prompt text from a `type:'user'` line (ignoring
+ *  tool_result blocks, which are tool output, not the user's words). */
+function userTextFrom(parsed: Record<string, unknown>): string {
+  const msg = isRecord(parsed.message) ? parsed.message : null;
+  const content = msg?.content;
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  const parts: string[] = [];
+  for (const block of content) {
+    if (isRecord(block) && block.type === 'text' && typeof block.text === 'string') parts.push(block.text);
+  }
+  return parts.join(' ');
 }
 
 /**

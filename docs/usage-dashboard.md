@@ -68,8 +68,12 @@ Model pricing + context limits live in `electron/adapters/cost-calculator.ts`.
   burn rate + 30-day projection) + hover-readout daily-cost chart + costliest
   sessions. Scan now emits day-granular model/project rollups + per-session
   summaries; `rollupPeriod` (pure, tested) slices to a window.
-- [ ] M4b — tool & task-category breakdown (parse tool_use; deterministic
-  13-category classification by tool patterns + keywords).
+- [x] M4b — tool & task-category breakdown. Scanner extracts tool_use (Bash
+  commands, `mcp:<server>` collapsed) and tracks the triggering user prompt;
+  `classifyTask` (pure, tested) buckets each turn into 13 categories from
+  tools + bash + prompt keywords. Day-granular → period-aware. UI: "By task
+  type" + "By tool" sections. (Known limit: text-only turns land in
+  Conversation/General, so cached-context cost concentrates there.)
 - [ ] (later) budget/subscription tracking; one-shot/retry & yield; optimize.
 
 ## Status

@@ -1,7 +1,9 @@
 import type {
+  CategoryUsage,
   DailyUsage,
   ModelUsage,
   ProjectUsage,
+  ToolUsage,
   UsageHistory,
   UsageTotals,
 } from '../../shared/usage-types';
@@ -24,6 +26,8 @@ export interface PeriodUsage {
   days: DailyUsage[];
   byModel: ModelUsage[];
   byProject: ProjectUsage[];
+  byTool: ToolUsage[];
+  byCategory: CategoryUsage[];
 }
 
 function utcDay(ms: number): string {
@@ -70,6 +74,21 @@ export function rollupPeriod(h: UsageHistory, period: UsagePeriod, nowMs: number
     byProjectMap.set(p.project, cur);
   }
 
+  const byToolMap = new Map<string, UsageTotals>();
+  for (const x of h.toolByDay) {
+    if (!inWindow(x.date)) continue;
+    const cur = byToolMap.get(x.tool) ?? emptyTotals();
+    add(cur, x);
+    byToolMap.set(x.tool, cur);
+  }
+  const byCategoryMap = new Map<string, UsageTotals>();
+  for (const x of h.categoryByDay) {
+    if (!inWindow(x.date)) continue;
+    const cur = byCategoryMap.get(x.category) ?? emptyTotals();
+    add(cur, x);
+    byCategoryMap.set(x.category, cur);
+  }
+
   const byModel: ModelUsage[] = [...byModelMap.entries()]
     .map(([model, t]) => ({ model, ...t }))
     .sort((a, b) => b.costUSD - a.costUSD);
@@ -77,8 +96,14 @@ export function rollupPeriod(h: UsageHistory, period: UsagePeriod, nowMs: number
     .map(([project, t]) => ({ project, ...t }))
     .sort((a, b) => b.costUSD - a.costUSD)
     .slice(0, 12);
+  const byTool: ToolUsage[] = [...byToolMap.entries()]
+    .map(([tool, t]) => ({ tool, ...t }))
+    .sort((a, b) => b.costUSD - a.costUSD || b.messages - a.messages);
+  const byCategory: CategoryUsage[] = [...byCategoryMap.entries()]
+    .map(([category, t]) => ({ category, ...t }))
+    .sort((a, b) => b.costUSD - a.costUSD);
 
-  return { period, totals, days, byModel, byProject };
+  return { period, totals, days, byModel, byProject, byTool, byCategory };
 }
 
 /** Cache-hit ratio (0–100): cached input as a share of all input. */

@@ -59,6 +59,20 @@ export interface SessionUsage extends UsageTotals {
   date: string;
 }
 
+export interface ToolUsage extends UsageTotals {
+  /** Tool name, or `mcp:<server>` for MCP tools. `messages` = turns using it. */
+  tool: string;
+}
+export interface CategoryUsage extends UsageTotals {
+  category: string;
+}
+export interface ToolDayUsage extends ToolUsage {
+  date: string;
+}
+export interface CategoryDayUsage extends CategoryUsage {
+  date: string;
+}
+
 export interface UsageHistory {
   /** ISO timestamp the scan finished. */
   generatedAt: string;
@@ -77,4 +91,10 @@ export interface UsageHistory {
   projectByDay: ProjectDayUsage[];
   /** Costliest sessions, by cost descending (top N). */
   sessions: SessionUsage[];
+  /** Per tool (all-time) and per (day, tool), for the tool breakdown. */
+  byTool: ToolUsage[];
+  toolByDay: ToolDayUsage[];
+  /** Per task category (all-time) and per (day, category). */
+  byCategory: CategoryUsage[];
+  categoryByDay: CategoryDayUsage[];
 }
