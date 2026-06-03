@@ -132,7 +132,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
     console.error('[main] hook auto-upgrade failed:', err);
   }
   registerPreferencesIpc(preferencesStore, sessionPersistence);
-  registerFilesIpc();
+  registerFilesIpc(window);
   registerUpdaterIpc();
 
   if (!lifecycle) {

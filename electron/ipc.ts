@@ -22,7 +22,7 @@ import { buildHookScript } from './hook-installer';
 import type { HookServer } from './hook-server';
 import type { PreferencesStore, Preferences } from './preferences';
 import type { SessionPersistence } from './session-persistence';
-import { listDir, readPreview } from './files-service';
+import { listDir, readPreview, watchFile } from './files-service';
 import { checkForUpdates, downloadUpdate, getUpdaterState, installUpdate } from './updater';
 import { relaunchApp } from './app-control';
 import { scanClaudeUsage } from './usage-scanner';
@@ -306,9 +306,41 @@ function runProxyTest(url: string): Promise<ProxyTestResult> {
 }
 
 /** Files panel — read-only fs access scoped through the main process. */
-export function registerFilesIpc(): void {
+export function registerFilesIpc(window: BrowserWindow): void {
   ipcMain.handle(IpcChannels.filesList, (_e, dir: string) => listDir(dir));
   ipcMain.handle(IpcChannels.filesPreview, (_e, path: string) => readPreview(path));
+
+  // Watch the one file the user is previewing and push a fresh preview when it
+  // changes on disk (e.g. an agent edits it), so the panel auto-refreshes. A
+  // single active watcher — selecting another file replaces it.
+  let stopWatch: (() => void) | null = null;
+  let watchedPath: string | null = null;
+  const clearWatch = (): void => {
+    stopWatch?.();
+    stopWatch = null;
+    watchedPath = null;
+  };
+
+  ipcMain.handle(IpcChannels.filesWatch, (_e, path: string) => {
+    if (watchedPath === path) return; // already watching it
+    clearWatch();
+    watchedPath = path;
+    stopWatch = watchFile(path, () => {
+      void readPreview(path)
+        .then((preview) => {
+          // Ignore a late event after the user switched files or closed.
+          if (watchedPath !== path || window.isDestroyed()) return;
+          window.webContents.send(IpcChannels.filesPreviewChanged, preview);
+        })
+        .catch(() => {
+          // File vanished mid-edit (atomic rename window, or deleted) — leave
+          // the current preview in place rather than flashing an error.
+        });
+    });
+  });
+
+  ipcMain.handle(IpcChannels.filesUnwatch, () => clearWatch());
+  window.on('closed', clearWatch);
 }
 
 export function registerUpdaterIpc(): void {

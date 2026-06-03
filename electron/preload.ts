@@ -197,6 +197,18 @@ const filesApi = {
   list: (dir: string): Promise<FileEntry[]> => ipcRenderer.invoke(IpcChannels.filesList, dir),
   preview: (path: string): Promise<FilePreview> =>
     ipcRenderer.invoke(IpcChannels.filesPreview, path),
+  /** Start watching a file for on-disk changes (replaces any prior watch). */
+  watch: (path: string): Promise<void> => ipcRenderer.invoke(IpcChannels.filesWatch, path),
+  /** Stop watching the current file. */
+  unwatch: (): Promise<void> => ipcRenderer.invoke(IpcChannels.filesUnwatch),
+  /** Subscribe to fresh previews pushed when the watched file changes. */
+  onPreviewChanged(callback: (preview: FilePreview) => void): () => void {
+    const h = (_e: unknown, p: FilePreview): void => callback(p);
+    ipcRenderer.on(IpcChannels.filesPreviewChanged, h);
+    return () => {
+      ipcRenderer.off(IpcChannels.filesPreviewChanged, h);
+    };
+  },
 };
 
 const updatesApi = {

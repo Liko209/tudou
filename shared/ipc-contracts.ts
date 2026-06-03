@@ -81,6 +81,11 @@ export const IpcChannels = {
   // Files panel (P3)
   filesList: 'files:list',
   filesPreview: 'files:preview',
+  /** Renderer → main: watch / stop watching the currently-previewed file. */
+  filesWatch: 'files:watch',
+  filesUnwatch: 'files:unwatch',
+  /** Push channel — main → renderer with a fresh preview when the file changes. */
+  filesPreviewChanged: 'files:preview-changed',
 
   // Auto-update (electron-updater → GitHub Releases)
   updateGetState: 'update:get-state',

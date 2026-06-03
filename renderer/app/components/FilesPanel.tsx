@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -65,6 +65,28 @@ export function FilesPanel({ cwd: cwdProp }: FilesPanelProps) {
   // Markdown files render formatted by default; this flips to raw source.
   const [showRaw, setShowRaw] = useState(false);
 
+  // Mirror `selected` into a ref so the (mount-once) file-change subscription
+  // can tell whether an incoming push is still for the file on screen.
+  const selectedRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  // Auto-refresh the preview when the watched file changes on disk (e.g. an
+  // agent edits it). Subscribe once; main pushes a fresh preview, we apply it
+  // only if it's still the selected file. Stop watching on unmount.
+  useEffect(() => {
+    const api = window.agentDashboard?.files;
+    if (!api?.onPreviewChanged) return;
+    const unsubscribe = api.onPreviewChanged((p) => {
+      if (p.path === selectedRef.current) setPreview(p);
+    });
+    return () => {
+      unsubscribe();
+      void api.unwatch?.();
+    };
+  }, []);
+
   const loadDir = useCallback(async (dir: string): Promise<void> => {
     const api = window.agentDashboard?.files;
     if (!api) return;
@@ -91,6 +113,7 @@ export function FilesPanel({ cwd: cwdProp }: FilesPanelProps) {
     setSelected(null);
     setPreview(null);
     setPreviewError(null);
+    void window.agentDashboard?.files?.unwatch?.();
     if (!cwd) return;
     void loadDir(cwd);
     setExpanded(new Set([cwd]));
@@ -119,6 +142,9 @@ export function FilesPanel({ cwd: cwdProp }: FilesPanelProps) {
     try {
       const p = await api.preview(path);
       setPreview(p);
+      // Watch this file so the preview auto-refreshes on disk changes (main
+      // replaces any prior watch).
+      void api.watch?.(path);
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : String(err));
     }

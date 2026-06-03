@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import chokidar from 'chokidar';
 
 export interface FileEntry {
   name: string;
@@ -83,6 +84,26 @@ export async function readPreview(path: string): Promise<FilePreview> {
     truncated: st.size > wantBytes,
     binary,
     size: st.size,
+  };
+}
+
+/**
+ * Watch a single file and invoke `onChange` when it's modified or recreated.
+ * Returns a dispose fn that stops the watcher. Uses chokidar (already used for
+ * JSONL watching) with awaitWriteFinish so a multi-write save / atomic rename
+ * fires once after the bytes settle, not mid-write. Editors and agents that
+ * save via temp-file + rename are covered by the `add` event.
+ */
+export function watchFile(path: string, onChange: () => void): () => void {
+  const watcher = chokidar.watch(path, {
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
+  });
+  const handler = (): void => onChange();
+  watcher.on('change', handler);
+  watcher.on('add', handler); // re-created after a delete / atomic rename
+  return () => {
+    void watcher.close();
   };
 }
 
