@@ -105,6 +105,12 @@ interface UIState {
   theme: ThemeChoice;
   /** Transient toast message; null when nothing to show. */
   toast: string | null;
+  /**
+   * Project cwds hidden from the sidebar. Mirrors `Preferences.hiddenProjects`
+   * — this store is the renderer's single source of truth (sidebar + Settings
+   * both read it), and hide/unhide write through to disk via the prefs IPC.
+   */
+  hiddenProjects: string[];
 
   toggleLeft: () => void;
   setTheme: (theme: ThemeChoice) => void;
@@ -133,6 +139,30 @@ interface UIState {
   /** Open Settings and scroll to a section (used by the update badge). */
   openSettingsTo: (section: string) => void;
   setSettingsScrollTarget: (section: string | null) => void;
+  /** Load the hidden-projects list from persisted preferences (app start). */
+  loadHiddenProjects: () => Promise<void>;
+  /** Replace the hidden-projects list (no write-through) — load / reset sync. */
+  setHiddenProjects: (list: string[]) => void;
+  /** Hide a project by cwd: optimistic update + persist. */
+  hideProject: (cwd: string) => void;
+  /** Unhide a project by cwd: optimistic update + persist. */
+  unhideProject: (cwd: string) => void;
+}
+
+/**
+ * Write the hidden-projects list to disk through the preferences IPC. Reads the
+ * current full Preferences first so we never clobber other fields. Best-effort:
+ * the optimistic store update is what the UI reacts to; a failed write just logs.
+ */
+async function persistHiddenProjects(list: string[]): Promise<void> {
+  const api = typeof window !== 'undefined' ? window.agentDashboard?.preferences : undefined;
+  if (!api) return;
+  try {
+    const current = await api.get();
+    await api.set({ ...current, hiddenProjects: list });
+  } catch (err) {
+    console.error('[ui-store] persist hiddenProjects failed:', err);
+  }
 }
 
 /** Apply a patch to the active session's panel state; no-op if no active
@@ -167,6 +197,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   newSessionMode: null,
   newSessionCwd: null,
   sectionsCollapsed: { projects: false, chats: false },
+  hiddenProjects: [],
 
   toggleLeft: () => set((s) => ({ leftCollapsed: !s.leftCollapsed })),
   showToast: (message) => set({ toast: message }),
@@ -219,6 +250,31 @@ export const useUIStore = create<UIState>((set, get) => ({
   openSettingsTo: (section) =>
     set({ settingsOpen: true, usageOpen: false, settingsScrollTarget: section }),
   setSettingsScrollTarget: (section) => set({ settingsScrollTarget: section }),
+  loadHiddenProjects: async () => {
+    const api = typeof window !== 'undefined' ? window.agentDashboard?.preferences : undefined;
+    if (!api) return;
+    try {
+      const prefs = await api.get();
+      set({ hiddenProjects: prefs.hiddenProjects ?? [] });
+    } catch {
+      // Keep whatever we have; missing prefs just means nothing hidden.
+    }
+  },
+  setHiddenProjects: (list) => set({ hiddenProjects: list }),
+  hideProject: (cwd) => {
+    const cur = get().hiddenProjects;
+    if (cur.includes(cwd)) return;
+    const next = [...cur, cwd];
+    set({ hiddenProjects: next });
+    void persistHiddenProjects(next);
+  },
+  unhideProject: (cwd) => {
+    const cur = get().hiddenProjects;
+    if (!cur.includes(cwd)) return;
+    const next = cur.filter((c) => c !== cwd);
+    set({ hiddenProjects: next });
+    void persistHiddenProjects(next);
+  },
 }));
 
 /**

@@ -7,10 +7,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Check, Loader2, Plus, Trash2, Volume2, X } from 'lucide-react';
+import { Check, Loader2, Plus, RotateCcw, Trash2, Volume2, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { cn } from '../../lib/utils';
+import { basename } from '../../lib/path-helpers';
 import { useUIStore, type ThemeChoice } from '../../lib/stores/ui-store';
 import { playCue } from '../../lib/sound';
 import type { SoundKind } from '../../../shared/ipc-contracts';
@@ -30,6 +31,7 @@ type SectionId =
   | 'integrations'
   | 'network'
   | 'updates'
+  | 'removed'
   | 'data';
 const NAV: { id: SectionId; label: string }[] = [
   { id: 'general', label: 'General' },
@@ -37,6 +39,7 @@ const NAV: { id: SectionId; label: string }[] = [
   { id: 'integrations', label: 'CLI & Hooks' },
   { id: 'network', label: 'Network' },
   { id: 'updates', label: 'Updates' },
+  { id: 'removed', label: 'Removed projects' },
   { id: 'data', label: 'Data' },
 ];
 
@@ -66,6 +69,7 @@ interface Preferences {
   network: {
     customEnv: CustomEnvVar[];
   };
+  hiddenProjects: string[];
 }
 
 /**
@@ -80,6 +84,9 @@ export function SettingsView() {
   const openHookModal = useUIStore((s) => s.setHookModalOpen);
   const theme = useUIStore((s) => s.theme);
   const setTheme = useUIStore((s) => s.setTheme);
+  const hiddenProjects = useUIStore((s) => s.hiddenProjects);
+  const unhideProject = useUIStore((s) => s.unhideProject);
+  const setHiddenProjects = useUIStore((s) => s.setHiddenProjects);
 
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -177,7 +184,12 @@ export function SettingsView() {
   const save = useCallback(async (next: Preferences) => {
     const api = window.agentDashboard?.preferences;
     if (!api) return;
-    const stored = await api.set(next);
+    // hiddenProjects is mutated independently by the sidebar (which writes
+    // straight through to the main-process store) and may change while Settings
+    // is open. Re-read the authoritative value here so saving an unrelated
+    // setting can't write back a stale list and resurrect a removed project.
+    const current = await api.get();
+    const stored = await api.set({ ...next, hiddenProjects: current.hiddenProjects });
     setPrefs(stored);
   }, []);
 
@@ -185,8 +197,11 @@ export function SettingsView() {
     setConfirmReset(false);
     const api = window.agentDashboard?.preferences;
     if (!api) return;
-    setPrefs(await api.reset());
-  }, []);
+    const fresh = await api.reset();
+    setPrefs(fresh);
+    // Keep the ui-store mirror in lockstep with what reset persisted.
+    setHiddenProjects(fresh.hiddenProjects);
+  }, [setHiddenProjects]);
 
   const doClearSessions = useCallback(async () => {
     setConfirmClear(false);
@@ -421,6 +436,41 @@ export function SettingsView() {
 
                 <Group id="updates" title="Updates" register={registerSection('updates')}>
                   <UpdatesSection />
+                </Group>
+
+                <Group
+                  id="removed"
+                  title="Removed projects"
+                  register={registerSection('removed')}
+                >
+                  <p className="text-xs text-subtle">
+                    Projects you removed from the sidebar. Nothing was deleted — their sessions and
+                    files are untouched. Restore one to show it in the sidebar again, or just start a
+                    new session in that folder.
+                  </p>
+                  {hiddenProjects.length === 0 ? (
+                    <p className="text-sm text-muted">No removed projects.</p>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      {hiddenProjects.map((cwd) => (
+                        <div
+                          key={cwd}
+                          className="flex items-center gap-2 rounded-md border border-edge/10 bg-sunken px-3 py-2"
+                        >
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-sm text-ink">{basename(cwd)}</span>
+                            <span className="truncate font-mono text-[11px] text-subtle" title={cwd}>
+                              {cwd}
+                            </span>
+                          </div>
+                          <Button size="sm" variant="ghost" onClick={() => unhideProject(cwd)}>
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Restore
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Group>
 
                 <Group id="data" title="Data" register={registerSection('data')}>

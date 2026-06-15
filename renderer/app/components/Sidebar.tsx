@@ -12,6 +12,7 @@ import {
   Search,
   Settings,
   SquarePen,
+  Trash2,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ import { cn } from '../../lib/utils';
 import { timeAgo } from '../../lib/time-ago';
 import {
   buildSidebarItems,
+  filterHiddenProjects,
   type SidebarItem,
   useSessionsStore,
 } from '../../lib/stores/sessions-store';
@@ -43,11 +45,14 @@ export function Sidebar() {
   const setUsageOpen = useUIStore((s) => s.setUsageOpen);
   const sectionsCollapsed = useUIStore((s) => s.sectionsCollapsed);
   const toggleSectionCollapsed = useUIStore((s) => s.toggleSectionCollapsed);
+  const hiddenProjects = useUIStore((s) => s.hiddenProjects);
+  const hideProject = useUIStore((s) => s.hideProject);
 
   const [chatsBaseDir, setChatsBaseDir] = useState('');
   const [query, setQuery] = useState('');
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [confirmKillItem, setConfirmKillItem] = useState<SidebarItem | null>(null);
+  const [confirmHideCwd, setConfirmHideCwd] = useState<string | null>(null);
   const [pendingResumeKey, setPendingResumeKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,10 +74,27 @@ export function Sidebar() {
     );
   };
 
-  const visibleProjects = projects
+  const visibleProjects = filterHiddenProjects(projects, hiddenProjects)
     .map((g) => ({ ...g, items: g.items.filter(matches) }))
     .filter((g) => g.items.length > 0);
   const visibleChats = chats.filter(matches);
+
+  // cwds with a live process still running — hiding one of these warns first,
+  // since the session keeps running but vanishes from the list. Derived from
+  // the raw session map so it's correct even while a search filters the rows.
+  const runningCwds = useMemo(() => {
+    const s = new Set<string>();
+    for (const sess of Object.values(sessions)) {
+      if (sess.panelOnly) continue;
+      if (sess.status !== 'exited' && sess.status !== 'errored') s.add(sess.cwd);
+    }
+    return s;
+  }, [sessions]);
+
+  const requestHide = (cwd: string): void => {
+    if (runningCwds.has(cwd)) setConfirmHideCwd(cwd);
+    else hideProject(cwd);
+  };
 
   const toggleProject = (cwd: string): void => {
     setCollapsedProjects((cur) => {
@@ -242,6 +264,18 @@ export function Sidebar() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          requestHide(group.cwd);
+                        }}
+                        aria-label={`Remove ${basename(group.cwd)} from the sidebar`}
+                        title="Remove from sidebar (sessions and files are kept)"
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-subtle opacity-0 hover:bg-canvas hover:text-danger group-hover/proj:opacity-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           openNewSession('project', group.cwd);
                         }}
                         aria-label={`New session in ${basename(group.cwd)}`}
@@ -338,6 +372,18 @@ export function Sidebar() {
         destructive
         onConfirm={() => void confirmCloseLive()}
         onCancel={() => setConfirmKillItem(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmHideCwd !== null}
+        title={`Remove ${confirmHideCwd ? basename(confirmHideCwd) : 'project'} from the sidebar?`}
+        description="This only unlinks the project from the list — no files are deleted. It has a running session that keeps running but disappears from the sidebar. Restore it any time from Settings → Removed projects."
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (confirmHideCwd) hideProject(confirmHideCwd);
+          setConfirmHideCwd(null);
+        }}
+        onCancel={() => setConfirmHideCwd(null)}
       />
     </div>
   );

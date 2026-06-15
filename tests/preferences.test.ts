@@ -142,6 +142,47 @@ describe('PreferencesStore', () => {
     ]);
   });
 
+  it('defaults hiddenProjects to an empty list', () => {
+    const store = new PreferencesStore(join(ROOT, 'hidden-default.json'));
+    expect(store.load().hiddenProjects).toEqual([]);
+  });
+
+  it('persists hiddenProjects and survives a fresh instance', () => {
+    const file = join(ROOT, 'hidden-persist.json');
+    const writer = new PreferencesStore(file);
+    writer.load();
+    writer.setAll({
+      ...DEFAULT_PREFERENCES,
+      hiddenProjects: ['/Users/me/work/alpha', '/Users/me/work/beta'],
+    });
+    const loaded = new PreferencesStore(file).load();
+    expect(loaded.hiddenProjects).toEqual(['/Users/me/work/alpha', '/Users/me/work/beta']);
+  });
+
+  it('sanitizes hiddenProjects — drops non-strings and de-dupes', async () => {
+    const file = join(ROOT, 'hidden-bad.json');
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        preferences: {
+          hiddenProjects: ['/a', '/a', 42, '/b', null, '/b'],
+        },
+      }),
+    );
+    const loaded = new PreferencesStore(file).load();
+    expect(loaded.hiddenProjects).toEqual(['/a', '/b']);
+  });
+
+  it('seeds an empty hiddenProjects when an older file omits it', async () => {
+    const file = join(ROOT, 'hidden-missing.json');
+    await writeFile(
+      file,
+      JSON.stringify({ version: 1, preferences: { notifications: { tray: false } } }),
+    );
+    expect(new PreferencesStore(file).load().hiddenProjects).toEqual([]);
+  });
+
   it('reset() restores defaults and persists', async () => {
     const file = join(ROOT, 'reset.json');
     const store = new PreferencesStore(file);

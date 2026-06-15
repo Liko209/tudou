@@ -54,6 +54,12 @@ export function AppShell() {
   useSoundEffects();
   useTheme();
 
+  // Load the persisted "removed projects" list once so the sidebar filters them
+  // out from first paint.
+  useEffect(() => {
+    void useUIStore.getState().loadHiddenProjects();
+  }, []);
+
   // Tell main which session the user is viewing, so it can stay silent for the
   // session you're already watching (sound only for background / other sessions).
   useEffect(() => {

@@ -35,6 +35,11 @@ export interface Preferences {
   };
   /** Proxy + custom env injected into every spawned CLI. */
   network: NetworkPreferences;
+  /**
+   * Project working directories (cwds) the user has hidden from the sidebar.
+   * Purely a view filter — sessions, PTYs, and on-disk history are untouched.
+   */
+  hiddenProjects: string[];
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -55,6 +60,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     codex: null,
   },
   network: clone(DEFAULT_NETWORK_PREFERENCES),
+  hiddenProjects: [],
 };
 
 interface PersistedFile {
@@ -98,9 +104,11 @@ export class PreferencesStore {
     return this.prefs;
   }
 
-  /** Reset to defaults. */
+  /** Reset to defaults. Keeps the curated hiddenProjects list — that's data the
+   *  user manages from the sidebar, not a tweakable setting, so a prefs reset
+   *  shouldn't resurrect every removed project. */
   reset(): Preferences {
-    this.prefs = clone(DEFAULT_PREFERENCES);
+    this.prefs = { ...clone(DEFAULT_PREFERENCES), hiddenProjects: this.prefs.hiddenProjects };
     this.writeNow();
     return this.prefs;
   }
@@ -184,6 +192,12 @@ function mergeWithDefaults(p: unknown): Preferences {
   }
   if (isRecord(p.network)) {
     base.network = mergeNetwork(p.network);
+  }
+  if (Array.isArray(p.hiddenProjects)) {
+    const seen = new Set<string>();
+    base.hiddenProjects = p.hiddenProjects.filter(
+      (c): c is string => typeof c === 'string' && !seen.has(c) && (seen.add(c), true),
+    );
   }
   return base;
 }

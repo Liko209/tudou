@@ -10,6 +10,7 @@ import {
   selectActiveSession,
   groupSessionsByCwd,
   sortSessionsByActivity,
+  filterHiddenProjects,
 } from '../renderer/lib/stores/sessions-store';
 import { useUIStore } from '../renderer/lib/stores/ui-store';
 import { buildMockSessions } from '../renderer/lib/mock-sessions';
@@ -100,6 +101,55 @@ describe('sessionsStore', () => {
     expect(cwds).toContain('/Users/fixture/workspace/agent-dashboard');
     const dashboard = groups.find((g) => g.cwd === '/Users/fixture/workspace/agent-dashboard');
     expect(dashboard?.items.length).toBe(2);
+  });
+});
+
+describe('filterHiddenProjects', () => {
+  const projects = [
+    { cwd: '/a', items: [1] },
+    { cwd: '/b', items: [2] },
+    { cwd: '/c', items: [3] },
+  ];
+
+  it('drops groups whose cwd is hidden', () => {
+    expect(filterHiddenProjects(projects, ['/b']).map((g) => g.cwd)).toEqual(['/a', '/c']);
+  });
+
+  it('accepts a Set as the hidden source', () => {
+    expect(filterHiddenProjects(projects, new Set(['/a', '/c'])).map((g) => g.cwd)).toEqual(['/b']);
+  });
+
+  it('returns all groups when nothing is hidden', () => {
+    expect(filterHiddenProjects(projects, [])).toHaveLength(3);
+  });
+});
+
+describe('uiStore hiddenProjects', () => {
+  beforeEach(() => {
+    useUIStore.setState({ hiddenProjects: [] });
+  });
+
+  it('hideProject adds a cwd', () => {
+    useUIStore.getState().hideProject('/x');
+    expect(useUIStore.getState().hiddenProjects).toEqual(['/x']);
+  });
+
+  it('hideProject is idempotent — no duplicates', () => {
+    useUIStore.getState().hideProject('/x');
+    useUIStore.getState().hideProject('/x');
+    expect(useUIStore.getState().hiddenProjects).toEqual(['/x']);
+  });
+
+  it('unhideProject removes a cwd', () => {
+    useUIStore.setState({ hiddenProjects: ['/x', '/y'] });
+    useUIStore.getState().unhideProject('/x');
+    expect(useUIStore.getState().hiddenProjects).toEqual(['/y']);
+  });
+
+  it('setHiddenProjects replaces the whole list', () => {
+    useUIStore.setState({ hiddenProjects: ['/x'] });
+    useUIStore.getState().setHiddenProjects(['/p', '/q']);
+    expect(useUIStore.getState().hiddenProjects).toEqual(['/p', '/q']);
   });
 });
 

@@ -46,7 +46,13 @@ export function useSessionBridge(): void {
       upsertSession(session);
       // Auto-focus newly spawned session — but not panel-only ones; those
       // live inside a dock panel and would hijack the main view.
-      if (!session.panelOnly) setActive(session.id);
+      if (!session.panelOnly) {
+        setActive(session.id);
+        // Starting fresh work in a removed project brings it back — otherwise
+        // the new session would be running but invisible in the sidebar.
+        const ui = useUIStore.getState();
+        if (ui.hiddenProjects.includes(session.cwd)) ui.unhideProject(session.cwd);
+      }
       // A new live session may have just consumed a dormant entry
       // (resume flow removes the prior persistence record) — resync.
       refreshPrevious();

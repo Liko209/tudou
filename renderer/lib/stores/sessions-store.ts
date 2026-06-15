@@ -159,6 +159,19 @@ export function partitionSessions(
 }
 
 /**
+ * Drop project groups the user has hidden (by cwd). Pure view filter — the
+ * sessions themselves are untouched. Accepts an array or Set of hidden cwds.
+ */
+export function filterHiddenProjects<T extends { cwd: string }>(
+  projects: T[],
+  hidden: string[] | Set<string>,
+): T[] {
+  const set = hidden instanceof Set ? hidden : new Set(hidden);
+  if (set.size === 0) return projects;
+  return projects.filter((g) => !set.has(g.cwd));
+}
+
+/**
  * Unified sidebar item — either a live session or a dormant previous one.
  * Built by merging the live `sessions` map with the `previous` list and
  * deduping by cliSessionId (live wins).
