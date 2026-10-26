@@ -152,4 +152,4 @@ Issues and PRs are welcome! Before submitting a PR please run `npm run typecheck
 *"Tudou" (土豆) is Chinese for potato — humble, dependable, and happy to sit quietly in the background while your agents do the cooking.* 🥔
 
 </div>
-M8-A 验收 10-26 ✅
+M8-A 验收 10-26 ✅ 已复审
